@@ -142,8 +142,9 @@ function migrateKbSheetValidations() {
     return;
   }
 
-  var numberDbCol = CONFIG.dbColLetters.number;
-  var sketchDbCol = CONFIG.dbColLetters.sketch;
+  var dbInfo = getDbHeaderInfo_();
+  var numberDbCol = columnIndexToLetter_(dbInfo.numberCol);
+  var sketchDbCol = columnIndexToLetter_(dbInfo.sketchCol);
   var colMap = resolveKbColumns_(sheet);
   var lastRow = Math.max(sheet.getLastRow(), CONFIG.kbDataStartRow + 50);
   var sketchLetter = columnIndexToLetter_(colMap.sketch);

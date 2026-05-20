@@ -7,7 +7,17 @@
  * @returns {boolean}
  */
 function isKbSheet_(name) {
-  return CONFIG.kbSheetPattern.test(String(name || '').trim());
+  var n = String(name || '').trim();
+  if (CONFIG.kbSheetPattern.test(n)) {
+    return true;
+  }
+  if (/^КБ/i.test(n) && /\d/.test(n)) {
+    return true;
+  }
+  if (CONFIG.kbSheetExtraNames && CONFIG.kbSheetExtraNames.indexOf(n) >= 0) {
+    return true;
+  }
+  return false;
 }
 
 /**

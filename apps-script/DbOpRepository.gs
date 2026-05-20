@@ -7,25 +7,36 @@
  */
 function getDbSheet_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(CONFIG.dbSheet);
-  if (!sheet) {
-    throw new Error('Лист "' + CONFIG.dbSheet + '" не найден.');
+  var names = [CONFIG.dbSheet];
+  if (CONFIG.dbSheetAltNames) {
+    names = names.concat(CONFIG.dbSheetAltNames);
   }
-  return sheet;
+
+  for (var i = 0; i < names.length; i++) {
+    var sheet = ss.getSheetByName(names[i]);
+    if (sheet) {
+      return sheet;
+    }
+  }
+
+  var target = normalizeHeaderKey_(CONFIG.dbSheet);
+  var sheets = ss.getSheets();
+  for (var s = 0; s < sheets.length; s++) {
+    if (normalizeHeaderKey_(sheets[s].getName()) === target) {
+      return sheets[s];
+    }
+  }
+
+  throw new Error('Лист «' + CONFIG.dbSheet + '» не найден. Откройте «Диагностика заголовков» в меню.');
 }
 
 /**
  * @param {Object.<string, number>} headerMap
- * @param {string} fieldKey ключ из CONFIG.db
+ * @param {string} fieldKey
  * @returns {number}
  */
 function dbCol_(headerMap, fieldKey) {
-  var title = CONFIG.db[fieldKey];
-  var col = headerMap[title];
-  if (!col) {
-    throw new Error('В БД.ОП нет колонки «' + title + '». Проверьте Config.gs.');
-  }
-  return col;
+  return resolveDbColumn_(headerMap, fieldKey);
 }
 
 /**
@@ -34,7 +45,7 @@ function dbCol_(headerMap, fieldKey) {
 function loadDbOperations_() {
   var sheet = getDbSheet_();
   var headerMap = getDbHeaderMap_();
-  var start = CONFIG.dbDataStartRow;
+  var start = getDbDataStartRow_();
   var lastRow = sheet.getLastRow();
   if (lastRow < start) {
     return [];
@@ -42,50 +53,60 @@ function loadDbOperations_() {
 
   var fields = [
     'sketch', 'number', 'opType', 'rollSpeed', 'toolWorkSpeed', 'toolOpCount',
-    'timeHuman', 'timeMachine', 'unitPriceHuman', 'unitPriceMachine', 'unitPriceHumanMag'
+    'timeHuman', 'timeMachine', 'unitPriceHuman', 'unitPriceMachine', 'unitPriceHumanMag',
+    'prepTime', 'setupConsumption'
   ];
-  var maxCol = Math.max.apply(null, fields.map(function (k) {
-    return dbCol_(headerMap, k);
-  }));
+
+  var required = ['sketch', 'number'];
+  var optional = fields.filter(function (f) {
+    return required.indexOf(f) < 0;
+  });
+
+  var maxCol = sheet.getLastColumn();
   var values = sheet.getRange(start, 1, lastRow - start + 1, maxCol).getValues();
+  var colIndex = { sketch: dbCol_(headerMap, 'sketch'), number: dbCol_(headerMap, 'number') };
+
+  optional.forEach(function (fieldKey) {
+    try {
+      colIndex[fieldKey] = dbCol_(headerMap, fieldKey);
+    } catch (e) {
+      colIndex[fieldKey] = 0;
+    }
+  });
 
   var out = [];
   values.forEach(function (row, idx) {
-    var sketch = String(row[dbCol_(headerMap, 'sketch') - 1] || '').trim();
-    var number = String(row[dbCol_(headerMap, 'number') - 1] || '').trim();
+    var sketch = String(row[colIndex.sketch - 1] || '').trim();
+    var number = String(row[colIndex.number - 1] || '').trim();
     if (!sketch && !number) {
       return;
     }
+
+    function cell(field) {
+      var c = colIndex[field];
+      return c ? row[c - 1] : '';
+    }
+
     var rec = {
       rowIndex: start + idx,
       sketch: sketch,
       number: number,
-      opType: String(row[dbCol_(headerMap, 'opType') - 1] || '').trim(),
-      rollSpeed: num_(row[dbCol_(headerMap, 'rollSpeed') - 1]),
-      toolWorkSpeed: num_(row[dbCol_(headerMap, 'toolWorkSpeed') - 1]),
-      toolOpCount: num_(row[dbCol_(headerMap, 'toolOpCount') - 1]),
-      timeHuman: num_(row[dbCol_(headerMap, 'timeHuman') - 1]),
-      timeMachine: num_(row[dbCol_(headerMap, 'timeMachine') - 1]),
-      unitPriceHuman: num_(row[dbCol_(headerMap, 'unitPriceHuman') - 1]),
-      unitPriceMachine: num_(row[dbCol_(headerMap, 'unitPriceMachine') - 1]),
-      unitPriceHumanMag: num_(row[dbCol_(headerMap, 'unitPriceHumanMag') - 1])
+      opType: String(cell('opType') || '').trim(),
+      rollSpeed: num_(cell('rollSpeed')),
+      toolWorkSpeed: num_(cell('toolWorkSpeed')),
+      toolOpCount: num_(cell('toolOpCount')),
+      timeHuman: num_(cell('timeHuman')),
+      timeMachine: num_(cell('timeMachine')),
+      unitPriceHuman: num_(cell('unitPriceHuman')),
+      unitPriceMachine: num_(cell('unitPriceMachine')),
+      unitPriceHumanMag: num_(cell('unitPriceHumanMag')),
+      prepTime: num_(cell('prepTime')),
+      setupConsumption: num_(cell('setupConsumption'))
     };
     rec.key = rec.sketch + '\u0001' + rec.number;
     out.push(rec);
   });
   return out;
-}
-
-/**
- * @returns {Object.<string, Object>}
- */
-function buildDbIndex_() {
-  var list = loadDbOperations_();
-  var index = {};
-  list.forEach(function (rec) {
-    index[rec.key] = rec;
-  });
-  return index;
 }
 
 /**
@@ -118,8 +139,13 @@ function listOperationsBySketch_(sketch) {
  * @returns {Object|null}
  */
 function findOperation_(sketch, number) {
-  var index = buildDbIndex_();
-  return index[sketch + '\u0001' + number] || null;
+  var list = loadDbOperations_();
+  for (var i = 0; i < list.length; i++) {
+    if (list[i].sketch === sketch && list[i].number === number) {
+      return list[i];
+    }
+  }
+  return null;
 }
 
 /**

@@ -63,9 +63,16 @@
       el.className = isErr ? 'err' : '';
     }
 
-    function fillSelect(id, items, getVal, getLabel) {
+    function fillSelect(id, items, getVal, getLabel, placeholder) {
       var sel = document.getElementById(id);
       sel.innerHTML = '';
+      if (!items || !items.length) {
+        var empty = document.createElement('option');
+        empty.value = '';
+        empty.textContent = placeholder || '— нет данных —';
+        sel.appendChild(empty);
+        return;
+      }
       items.forEach(function (item) {
         var o = document.createElement('option');
         o.value = getVal(item);
@@ -107,13 +114,22 @@
     function init() {
       google.script.run
         .withSuccessHandler(function (data) {
-          fillSelect('sheet', data.sheets, function (s) { return s; }, function (s) { return s; });
-          fillSelect('sketch', data.sketches, function (s) { return s; }, function (s) { return s; });
+          if (data.error) {
+            setStatus(data.error + (data.hint ? '\n' + data.hint : ''), true);
+          } else if (data.hint) {
+            setStatus(data.hint, true);
+          }
+          fillSelect('sheet', data.sheets, function (s) { return s; }, function (s) { return s; },
+            'Нет листов КБ1, КБ2…');
+          fillSelect('sketch', data.sketches, function (s) { return s; }, function (s) { return s; },
+            'Нет эскизов — проверьте БД.ОП');
           var sheetSel = document.getElementById('sheet');
-          if (data.activeSheet && data.sheets.indexOf(data.activeSheet) >= 0) {
+          if (data.activeSheet && data.sheets && data.sheets.indexOf(data.activeSheet) >= 0) {
             sheetSel.value = data.activeSheet;
           }
-          loadOperations();
+          if (data.sketches && data.sketches.length) {
+            loadOperations();
+          }
         })
         .withFailureHandler(function (e) { setStatus(e.message, true); })
         .apiGetInitialData();

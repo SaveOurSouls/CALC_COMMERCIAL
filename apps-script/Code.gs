@@ -8,6 +8,7 @@ function onOpen() {
     .addItem('Панель быстрого набора', 'showKbSidebar')
     .addItem('Пересчитать время и цену (активный лист)', 'recalcActiveKbSheet')
     .addItem('Миграция: убрать TL_КБ (валидация FILTER)', 'migrateKbSheetValidations')
+    .addItem('Диагностика заголовков БД.ОП', 'showDbHeaderDiagnostics')
     .addSeparator()
     .addItem('Справка по формулам', 'showFormulaHelp')
     .addToUi();
@@ -51,11 +52,33 @@ function showFormulaHelp() {
 /** --- API для Sidebar (google.script.run) --- */
 
 function apiGetInitialData() {
-  return {
-    sheets: listKbSheetNames_(),
-    sketches: listSketchNames_(),
-    activeSheet: SpreadsheetApp.getActiveSheet().getName()
-  };
+  var active = SpreadsheetApp.getActiveSheet().getName();
+  var sheets = [];
+  try {
+    sheets = listKbSheetNames_();
+  } catch (e1) {
+    sheets = [];
+  }
+
+  try {
+    var info = getDbHeaderInfo_();
+    var sketches = listSketchNames_();
+    return {
+      sheets: sheets,
+      sketches: sketches,
+      activeSheet: active,
+      dbHeaderRow: info.headerRow,
+      hint: sheets.length ? '' : 'Нет листов КБ1, КБ2… Проверьте имена листов.'
+    };
+  } catch (err) {
+    return {
+      sheets: sheets,
+      sketches: [],
+      activeSheet: active,
+      error: err.message,
+      hint: 'Меню → Техкарта КБ → Диагностика заголовков БД.ОП'
+    };
+  }
 }
 
 /**
