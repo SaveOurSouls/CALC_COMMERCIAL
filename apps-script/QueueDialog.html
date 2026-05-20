@@ -18,7 +18,7 @@
     button.danger { background: #fff; border: 1px solid #dadce0; color: #c5221f; }
     button:disabled { opacity: .55; cursor: default; }
     .table-wrap {
-      height: calc(100vh - 200px); min-height: 360px; max-height: 560px;
+      height: calc(100vh - 140px); min-height: 720px; max-height: 1120px;
       overflow: auto; border: 1px solid #dadce0; border-radius: 6px; background: #fff;
     }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -30,7 +30,10 @@
     td { padding: 6px; border-bottom: 1px solid #eee; vertical-align: middle; }
     tr.drag-over td { background: #e8f0fe; }
     tr.dragging { opacity: .45; }
-    td input { width: 100%; padding: 5px 6px; border: 1px solid #dadce0; border-radius: 3px; }
+    td input, td select { width: 100%; padding: 5px 6px; border: 1px solid #dadce0; border-radius: 3px; font-size: 12px; }
+    td.col-sketch { min-width: 140px; }
+    td.col-number { min-width: 160px; }
+    .op-type-hint { display: block; color: #5f6368; font-size: 10px; margin-top: 2px; }
     td.num { width: 36px; text-align: center; color: #5f6368; font-weight: 600; }
     td.handle { width: 28px; text-align: center; cursor: grab; color: #9aa0a6; font-size: 16px; }
     td.act { width: 100px; white-space: nowrap; }
@@ -49,7 +52,7 @@
   <div id="loadingOverlay">Загрузка очереди…</div>
 
   <h2>Очередь операций</h2>
-  <p class="hint">Перемещение и правка N/L — сразу на экране. Сохранение на сервер — с задержкой. Выделите строку в КБ → «Вставить всё».</p>
+  <p class="hint">Эскиз и Номер — ввод с подсказками как в справочнике. N/L/OP — в строке. Выделите строку в КБ → «Вставить всё».</p>
 
   <div class="top">
     <span>Вставить в лист:</span>
@@ -75,10 +78,13 @@
     <div class="empty" id="queueEmpty" style="display:none">Очередь пуста. Добавьте операции из боковой панели «Справочник».</div>
   </div>
 
+  <datalist id="dlSketches"></datalist>
+
   <div id="status"></div>
 
   <script>
     var state = { queue: [], nextId: 1, dragId: null, dirty: false };
+    var catalog = { sketches: [], opsBySketch: {} };
     var saveTimer = null;
     var pingTimer = null;
 
@@ -135,16 +141,75 @@
       return String(s || '').replace(/"/g, '&quot;');
     }
 
+    function fillSketchesDatalist_() {
+      var dl = document.getElementById('dlSketches');
+      dl.innerHTML = '';
+      catalog.sketches.forEach(function (s) {
+        var o = document.createElement('option');
+        o.value = s;
+        dl.appendChild(o);
+      });
+    }
+
+    function ensureNumberDatalist_(item) {
+      var listId = 'dlNum' + item.id;
+      var dl = document.getElementById(listId);
+      if (!dl) {
+        dl = document.createElement('datalist');
+        dl.id = listId;
+        document.body.appendChild(dl);
+      }
+      dl.innerHTML = '';
+      var ops = catalog.opsBySketch[item.sketch] || [];
+      ops.forEach(function (op) {
+        var o = document.createElement('option');
+        o.value = op.number;
+        if (op.label) {
+          o.label = op.label;
+        }
+        dl.appendChild(o);
+      });
+      return listId;
+    }
+
+    function syncOpMeta_(item, tr) {
+      var ops = catalog.opsBySketch[item.sketch] || [];
+      var found = null;
+      for (var i = 0; i < ops.length; i++) {
+        if (ops[i].number === item.number) {
+          found = ops[i];
+          break;
+        }
+      }
+      if (found) {
+        item.label = found.label || found.number;
+        item.opType = found.opType || '';
+      } else {
+        item.label = item.number;
+        item.opType = '';
+      }
+      var hint = tr.querySelector('.op-type-hint');
+      if (hint) {
+        hint.textContent = item.opType ? item.opType : '—';
+      }
+    }
+
     function buildRowEl_(item, index) {
       var tr = document.createElement('tr');
       tr.dataset.id = String(item.id);
       tr.draggable = true;
+      var numListId = ensureNumberDatalist_(item);
+
       tr.innerHTML =
         '<td class="handle" title="Перетащить">☰</td>' +
         '<td class="num">' + (index + 1) + '</td>' +
-        '<td>' + esc_(item.sketch) + '</td>' +
-        '<td><strong>' + esc_(item.number) + '</strong><br><span style="color:#5f6368;font-size:11px">' +
-          esc_(item.opType || '') + '</span></td>' +
+        '<td class="col-sketch">' +
+          '<input type="text" data-f="sketch" value="' + escAttr_(item.sketch) + '" list="dlSketches" placeholder="Эскиз">' +
+        '</td>' +
+        '<td class="col-number">' +
+          '<input type="text" data-f="number" value="' + escAttr_(item.number) + '" list="' + numListId + '" placeholder="Номер">' +
+          '<span class="op-type-hint">' + esc_(item.opType || '—') + '</span>' +
+        '</td>' +
         '<td><input type="number" data-f="n" value="' + item.n + '" step="any"></td>' +
         '<td><input type="number" data-f="l" value="' + item.l + '" step="any"></td>' +
         '<td><input type="text" data-f="op" value="' + escAttr_(item.op || '') + '"></td>' +
@@ -212,9 +277,25 @@
       tr.querySelectorAll('input').forEach(function (inp) {
         inp.oninput = function () {
           var f = inp.getAttribute('data-f');
+          if (f === 'sketch') {
+            item.sketch = inp.value.trim();
+            var numInp = tr.querySelector('input[data-f="number"]');
+            var listId = ensureNumberDatalist_(item);
+            numInp.setAttribute('list', listId);
+            syncOpMeta_(item, tr);
+            scheduleSave_();
+            return;
+          }
+          if (f === 'number') {
+            item.number = inp.value.trim();
+            syncOpMeta_(item, tr);
+            scheduleSave_();
+            return;
+          }
           item[f] = (f === 'n' || f === 'l') ? Number(inp.value) : inp.value;
           scheduleSave_();
         };
+        inp.onchange = inp.oninput;
       });
 
       tr.addEventListener('dragstart', function (e) {
@@ -296,6 +377,9 @@
           document.getElementById('loadingOverlay').style.display = 'none';
           state.queue = data.queue || [];
           state.nextId = data.nextId || 1;
+          catalog.sketches = data.sketches || [];
+          catalog.opsBySketch = data.opsBySketch || {};
+          fillSketchesDatalist_();
           fillSheetSelect(data.sheets, data.sheetName);
           renderTable();
         })

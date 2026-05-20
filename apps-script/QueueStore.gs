@@ -168,7 +168,11 @@ function apiQueueDialogBootstrap() {
       data.sheetsCache = [];
     }
   }
-  return buildQueueStateResponse_(data);
+  var resp = buildQueueStateResponse_(data);
+  var index = getDbOpsSidebarIndex_();
+  resp.sketches = index.sketches;
+  resp.opsBySketch = index.opsBySketch;
+  return resp;
 }
 
 /**

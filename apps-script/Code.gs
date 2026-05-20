@@ -50,7 +50,7 @@ function showKbQueueDialog() {
   }
   var html = HtmlService.createHtmlOutputFromFile('QueueDialog')
     .setWidth(920)
-    .setHeight(680);
+    .setHeight(1360);
   SpreadsheetApp.getUi().showModelessDialog(html, 'Очередь операций');
   return { alreadyOpen: false };
 }
