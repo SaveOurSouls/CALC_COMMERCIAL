@@ -62,7 +62,15 @@ function loadDbOperations_() {
     return required.indexOf(f) < 0;
   });
 
-  var maxCol = sheet.getLastColumn();
+  var colNums = [dbCol_(headerMap, 'sketch'), dbCol_(headerMap, 'number')];
+  optional.forEach(function (fieldKey) {
+    try {
+      colNums.push(dbCol_(headerMap, fieldKey));
+    } catch (e) {
+      // optional
+    }
+  });
+  var maxCol = Math.max.apply(null, colNums);
   var values = sheet.getRange(start, 1, lastRow - start + 1, maxCol).getValues();
   var colIndex = { sketch: dbCol_(headerMap, 'sketch'), number: dbCol_(headerMap, 'number') };
 
@@ -113,14 +121,7 @@ function loadDbOperations_() {
  * @returns {string[]}
  */
 function listSketchNames_() {
-  var list = loadDbOperations_();
-  var set = {};
-  list.forEach(function (r) {
-    if (r.sketch) {
-      set[r.sketch] = true;
-    }
-  });
-  return Object.keys(set).sort();
+  return getDbOpsSidebarIndex_().sketches;
 }
 
 /**
@@ -128,7 +129,7 @@ function listSketchNames_() {
  * @returns {Array.<Object>}
  */
 function listOperationsBySketch_(sketch) {
-  return loadDbOperations_().filter(function (r) {
+  return getCachedDbOperations_().filter(function (r) {
     return r.sketch === sketch;
   });
 }
@@ -139,7 +140,7 @@ function listOperationsBySketch_(sketch) {
  * @returns {Object|null}
  */
 function findOperation_(sketch, number) {
-  var list = loadDbOperations_();
+  var list = getCachedDbOperations_();
   for (var i = 0; i < list.length; i++) {
     if (list[i].sketch === sketch && list[i].number === number) {
       return list[i];

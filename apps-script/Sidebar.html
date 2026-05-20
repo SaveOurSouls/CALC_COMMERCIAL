@@ -49,13 +49,13 @@
   <input type="number" id="count" value="1" min="1" max="50" step="1">
 
   <button class="primary" id="btnInsert">Вставить операцию</button>
-  <button class="secondary" id="btnDup">Скопировать последнюю строку</button>
-  <p class="hint">Выделите строку в таблице — новые строки встанут <strong>на её место</strong> (старая сдвинется вниз). «Копировать» берёт данные с <strong>выделенной</strong> строки. При количестве &gt; 1 все строки — копии первой вставленной.</p>
+  <button class="secondary" id="btnDup">Скопировать выделенную строку</button>
+  <p class="hint">Операции загружаются один раз при открытии. Выделите строку в таблице — вставка на её место. При N&gt;1 все строки заполняются копией первой.</p>
 
   <div id="status"></div>
 
   <script>
-    var state = { operations: [] };
+    var state = { opsBySketch: {}, operations: [] };
 
     function setStatus(msg, isErr) {
       var el = document.getElementById('status');
@@ -83,16 +83,8 @@
 
     function loadOperations() {
       var sketch = document.getElementById('sketch').value;
-      if (!sketch) return;
-      setStatus('Загрузка операций…');
-      google.script.run
-        .withSuccessHandler(function (ops) {
-          state.operations = ops || [];
-          renderOps();
-          setStatus('');
-        })
-        .withFailureHandler(function (e) { setStatus(e.message, true); })
-        .apiGetOperations(sketch);
+      state.operations = state.opsBySketch[sketch] || [];
+      renderOps();
     }
 
     function renderOps() {
@@ -112,13 +104,15 @@
     }
 
     function init() {
+      setStatus('Загрузка справочника…');
       google.script.run
         .withSuccessHandler(function (data) {
           if (data.error) {
             setStatus(data.error + (data.hint ? '\n' + data.hint : ''), true);
-          } else if (data.hint) {
-            setStatus(data.hint, true);
+          } else {
+            setStatus('');
           }
+          state.opsBySketch = data.opsBySketch || {};
           fillSelect('sheet', data.sheets, function (s) { return s; }, function (s) { return s; },
             'Нет листов КБ1, КБ2…');
           fillSelect('sketch', data.sketches, function (s) { return s; }, function (s) { return s; },
@@ -128,6 +122,7 @@
             sheetSel.value = data.activeSheet;
           }
           if (data.sketches && data.sketches.length) {
+            document.getElementById('sketch').selectedIndex = 0;
             loadOperations();
           }
         })
@@ -151,7 +146,7 @@
         n: Number(document.getElementById('n').value),
         l: Number(document.getElementById('l').value),
         op: document.getElementById('op').value,
-        count: Number(document.getElementById('count').value)
+        count: parseRowCountFromInput_()
       };
       setStatus('Вставка…');
       google.script.run
@@ -164,9 +159,15 @@
         .apiInsertRows(payload);
     });
 
+    function parseRowCountFromInput_() {
+      var n = parseInt(String(document.getElementById('count').value), 10);
+      if (isNaN(n) || n < 1) return 1;
+      return Math.min(n, 50);
+    }
+
     document.getElementById('btnDup').addEventListener('click', function () {
       var sheetName = document.getElementById('sheet').value;
-      var count = Number(document.getElementById('count').value) || 1;
+      var count = parseRowCountFromInput_();
       setStatus('Копирование…');
       google.script.run
         .withSuccessHandler(function (res) {

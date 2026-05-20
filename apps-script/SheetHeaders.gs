@@ -63,6 +63,7 @@ function getDbHeaderInfo_() {
 
 function clearDbHeaderCache_() {
   CacheService.getDocumentCache().remove(DB_HEADER_CACHE_KEY);
+  invalidateDbOpsCache_();
 }
 
 /**

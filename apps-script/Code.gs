@@ -19,6 +19,13 @@ function onOpen() {
  */
 function onEdit(e) {
   try {
+    if (e && e.range) {
+      var sheetName = normalizeHeaderKey_(e.range.getSheet().getName());
+      if (sheetName === normalizeHeaderKey_(CONFIG.dbSheet)) {
+        invalidateDbOpsCache_();
+        clearDbHeaderCache_();
+      }
+    }
     onEditKbHandler_(e);
   } catch (err) {
     console.error(err);
@@ -62,10 +69,11 @@ function apiGetInitialData() {
 
   try {
     var info = getDbHeaderInfo_();
-    var sketches = listSketchNames_();
+    var sidebarIndex = getDbOpsSidebarIndex_();
     return {
       sheets: sheets,
-      sketches: sketches,
+      sketches: sidebarIndex.sketches,
+      opsBySketch: sidebarIndex.opsBySketch,
       activeSheet: active,
       dbHeaderRow: info.headerRow,
       hint: sheets.length ? '' : 'Нет листов КБ1, КБ2… Проверьте имена листов.'
@@ -86,13 +94,8 @@ function apiGetInitialData() {
  * @returns {Array.<Object>}
  */
 function apiGetOperations(sketch) {
-  return listOperationsBySketch_(sketch).map(function (op) {
-    return {
-      number: op.number,
-      opType: op.opType,
-      label: op.number + ' — ' + op.opType
-    };
-  });
+  var index = getDbOpsSidebarIndex_();
+  return index.opsBySketch[sketch] || [];
 }
 
 /**

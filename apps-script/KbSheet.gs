@@ -149,7 +149,7 @@ function insertKbRows_(payload) {
   var n = payload.n;
   var l = payload.l;
   var opVal = payload.op;
-  var count = Math.max(1, parseInt(payload.count, 10) || 1);
+  var count = parseRowCount_(payload.count);
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(sheetName);
@@ -175,26 +175,25 @@ function insertKbRows_(payload) {
   };
 
   writeKbRowData_(sheet, startRow, colMap, rowData);
+  inserted.push(startRow);
 
-  for (var i = 1; i < count; i++) {
-    var row = startRow + i;
-    copyKbRowValues_(sheet, startRow, row, colMap);
+  if (count > 1) {
+    var destRows = [];
+    for (var i = 1; i < count; i++) {
+      destRows.push(startRow + i);
+      inserted.push(startRow + i);
+    }
+    copyKbRowToMany_(sheet, startRow, destRows, colMap);
+  }
+
+  for (var r = 0; r < inserted.length; r++) {
     try {
-      applyNumberValidationForRow_(sheet, row, colMap);
+      applyNumberValidationForRow_(sheet, inserted[r], colMap);
     } catch (eVal) {
       console.warn(eVal.message);
     }
-    recalcKbRow_(sheet, row, colMap);
-    inserted.push(row);
+    recalcKbRow_(sheet, inserted[r], colMap);
   }
-
-  try {
-    applyNumberValidationForRow_(sheet, startRow, colMap);
-  } catch (eVal0) {
-    console.warn(eVal0.message);
-  }
-  recalcKbRow_(sheet, startRow, colMap);
-  inserted.unshift(startRow);
 
   return {
     rows: inserted,
@@ -219,20 +218,28 @@ function duplicateLastKbRow_(sheetName, count) {
     throw new Error('Нет строк для копирования. Выделите строку в таблице или заполните хотя бы одну.');
   }
 
-  count = Math.max(1, count || 1);
+  count = parseRowCount_(count);
   var startRow = insertKbTableRows_(sheet, count);
-  var rows = [];
+  var rows = [startRow];
 
-  for (var i = 0; i < count; i++) {
-    var row = startRow + i;
-    copyKbRowValues_(sheet, sourceRow, row, colMap);
+  copyKbRowValues_(sheet, sourceRow, startRow, colMap);
+
+  if (count > 1) {
+    var destRows = [];
+    for (var i = 1; i < count; i++) {
+      destRows.push(startRow + i);
+      rows.push(startRow + i);
+    }
+    copyKbRowToMany_(sheet, startRow, destRows, colMap);
+  }
+
+  for (var j = 0; j < rows.length; j++) {
     try {
-      applyNumberValidationForRow_(sheet, row, colMap);
+      applyNumberValidationForRow_(sheet, rows[j], colMap);
     } catch (eVal) {
       console.warn(eVal.message);
     }
-    recalcKbRow_(sheet, row, colMap);
-    rows.push(row);
+    recalcKbRow_(sheet, rows[j], colMap);
   }
 
   return {

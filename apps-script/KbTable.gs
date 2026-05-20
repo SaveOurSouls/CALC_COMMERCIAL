@@ -126,8 +126,36 @@ function insertKbTableRows_(sheet, count) {
   if (beforeRow < bounds.firstDataRow) {
     beforeRow = bounds.firstDataRow;
   }
-  sheet.insertRowsBefore(beforeRow, count);
+
+  // В структурированной таблице insertRowsBefore(..., N) иногда вставляет не все N строк.
+  for (var i = 0; i < count; i++) {
+    sheet.insertRowsBefore(beforeRow, 1);
+  }
   return beforeRow;
+}
+
+/**
+ * Скопировать строку-образец в несколько строк одним проходом по колонкам.
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {number} fromRow
+ * @param {number[]} destRows
+ * @param {Object} colMap
+ */
+function copyKbRowToMany_(sheet, fromRow, destRows, colMap) {
+  if (!destRows.length) {
+    return;
+  }
+  var cols = getKbWritableColumnIndexes_(colMap);
+  cols.forEach(function (c) {
+    destRows.forEach(function (destRow) {
+      try {
+        copyCellValue_(sheet, fromRow, destRow, c);
+      } catch (e) {
+        safeSetCellValue_(sheet, destRow, c, sheet.getRange(fromRow, c).getValue());
+      }
+    });
+  });
 }
 
 /**
