@@ -111,12 +111,16 @@
 
     function fillSelect(id, items, getVal, getLabel, ph) {
       var sel = document.getElementById(id);
+      var prev = sel.value;
       sel.innerHTML = '';
       if (!items || !items.length) {
-        var o = document.createElement('option');
-        o.textContent = ph || '—';
-        sel.appendChild(o);
-        return;
+        var empty = document.createElement('option');
+        empty.value = '';
+        empty.textContent = ph || '—';
+        empty.disabled = true;
+        empty.selected = true;
+        sel.appendChild(empty);
+        return prev;
       }
       items.forEach(function (item) {
         var o = document.createElement('option');
@@ -124,18 +128,60 @@
         o.textContent = getLabel(item);
         sel.appendChild(o);
       });
+      return prev;
     }
 
+    function isValidSemifinishedChoice_(group, article) {
+      var presets = state.presets || { groups: [], byGroup: {} };
+      if (!group || !article) return false;
+      if (presets.groups.indexOf(group) < 0) return false;
+      var arts = presets.byGroup[group] || [];
+      return arts.indexOf(article) >= 0;
+    }
+
+    function restoreSelectValue_(sel, prev, items) {
+      if (prev && items && items.indexOf(prev) >= 0) {
+        sel.value = prev;
+        return;
+      }
+      if (items && items.length) {
+        sel.selectedIndex = 0;
+      }
+    }
+
+    /** Только список артикулов для выбранного типа (не трогает тип). */
+    function fillSemifinishedArticles_() {
+      var presets = state.presets || { groups: [], byGroup: {} };
+      var groupSel = document.getElementById('semifinishedGroup');
+      var articleSel = document.getElementById('semifinishedArticle');
+      var group = groupSel.value;
+      var articles = (group && presets.byGroup) ? (presets.byGroup[group] || []) : [];
+      var prevArticle = fillSelect('semifinishedArticle', articles,
+        function (a) { return a; }, function (a) { return a; }, '—');
+      restoreSelectValue_(articleSel, prevArticle, articles);
+      if (articles.length && (!articleSel.value || articleSel.selectedIndex < 0)) {
+        articleSel.selectedIndex = 0;
+      }
+    }
+
+    /** Тип + артикулы (при обновлении с сервера сохраняем выбор, если возможно). */
     function fillSemifinishedSelects_() {
       var presets = state.presets || { groups: [], byGroup: {} };
-      fillSelect('semifinishedGroup', presets.groups, function (g) { return g; }, function (g) { return g; }, 'Нет наборов');
       var groupSel = document.getElementById('semifinishedGroup');
-      if (presets.groups && presets.groups.length && !groupSel.value) {
+      var prevGroup = groupSel.value;
+
+      var prevFromFill = fillSelect('semifinishedGroup', presets.groups,
+        function (g) { return g; }, function (g) { return g; }, 'Нет наборов');
+      restoreSelectValue_(groupSel, prevGroup || prevFromFill, presets.groups);
+      if (presets.groups.length && (!groupSel.value || groupSel.selectedIndex < 0)) {
         groupSel.selectedIndex = 0;
       }
-      var group = groupSel.value;
-      var articles = presets.byGroup[group] || [];
-      fillSelect('semifinishedArticle', articles, function (a) { return a; }, function (a) { return a; }, '—');
+
+      fillSemifinishedArticles_();
+    }
+
+    function onSemifinishedGroupChange_() {
+      fillSemifinishedArticles_();
     }
 
     function addSemifinishedToQueue() {
@@ -143,6 +189,10 @@
       var article = document.getElementById('semifinishedArticle').value;
       if (!group || !article) {
         setStatus('Выберите тип и название полуфабриката', true);
+        return;
+      }
+      if (!isValidSemifinishedChoice_(group, article)) {
+        setStatus('Выберите тип и артикул из списка (↻ обновить)', true);
         return;
       }
       setStatus('Загрузка набора…');
@@ -252,7 +302,8 @@
 
     document.getElementById('sketch').onchange = loadOperations;
     document.getElementById('search').oninput = loadOperations;
-    document.getElementById('semifinishedGroup').onchange = fillSemifinishedSelects_;
+    document.getElementById('semifinishedGroup').onchange = onSemifinishedGroupChange_;
+    document.getElementById('semifinishedGroup').oninput = onSemifinishedGroupChange_;
     document.getElementById('btnAdd').onclick = addToQueue;
     document.getElementById('btnAddSemifinished').onclick = addSemifinishedToQueue;
     document.getElementById('btnRefreshPresets').onclick = function () {
