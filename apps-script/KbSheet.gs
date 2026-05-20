@@ -249,3 +249,68 @@ function duplicateLastKbRow_(sheetName, count) {
     hint: 'Скопировано ' + count + ' строк с строки ' + sourceRow + ' на позицию ' + startRow + '.'
   };
 }
+
+/**
+ * Вставка очереди операций одним вызовом (один запрос к таблице).
+ *
+ * @param {Object} payload {sheetName, rows: Array}
+ * @returns {Object}
+ */
+function insertKbQueue_(payload) {
+  var sheetName = payload.sheetName;
+  var rows = payload.rows || [];
+
+  if (!rows.length) {
+    throw new Error('Очередь пуста. Добавьте операции из справочника.');
+  }
+  if (rows.length > 50) {
+    throw new Error('За один раз можно вставить не более 50 строк.');
+  }
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet || !isKbSheet_(sheetName)) {
+    throw new Error('Лист «' + sheetName + '» не найден или не является КБ.');
+  }
+
+  var colMap = resolveKbColumns_(sheet);
+  var count = rows.length;
+  var startRow = insertKbTableRows_(sheet, count);
+  var inserted = [];
+  var skipRecalc = shouldSkipCalculatedWrites_(sheet);
+
+  for (var i = 0; i < count; i++) {
+    var item = rows[i];
+    var sketch = String(item.sketch || '').trim();
+    var number = String(item.number || '').trim();
+    var dbOp = findOperation_(sketch, number);
+    if (!dbOp) {
+      throw new Error('Операция не найдена (позиция ' + (i + 1) + '): «' + sketch + '» / «' + number + '».');
+    }
+
+    var row = startRow + i;
+    writeKbRowData_(sheet, row, colMap, {
+      sketch: sketch,
+      number: number,
+      n: num_(item.n),
+      l: num_(item.l),
+      op: item.op || '',
+      dbOp: dbOp
+    });
+    inserted.push(row);
+
+    if (!skipRecalc) {
+      recalcKbRow_(sheet, row, colMap);
+    }
+  }
+
+  SpreadsheetApp.flush();
+
+  return {
+    rows: inserted,
+    sheetName: sheetName,
+    count: count,
+    startRow: startRow,
+    hint: 'Вставлено ' + count + ' строк одним блоком (с ' + startRow + ').'
+  };
+}

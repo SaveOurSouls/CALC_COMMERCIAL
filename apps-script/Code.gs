@@ -5,7 +5,7 @@
 function onOpen() {
   var ui = SpreadsheetApp.getUi();
   ui.createMenu('Техкарта КБ')
-    .addItem('Панель быстрого набора', 'showKbSidebar')
+    .addItem('Панель набора и очереди', 'showKbSidebar')
     .addItem('Пересчитать время и цену (активный лист)', 'recalcActiveKbSheet')
     .addItem('Миграция: убрать TL_КБ (валидация FILTER)', 'migrateKbSheetValidations')
     .addItem('Диагностика заголовков БД.ОП', 'showDbHeaderDiagnostics')
@@ -34,8 +34,8 @@ function onEdit(e) {
 
 function showKbSidebar() {
   var html = HtmlService.createHtmlOutputFromFile('Sidebar')
-    .setTitle('Быстрый набор операций')
-    .setWidth(380);
+    .setTitle('Очередь операций')
+    .setWidth(520);
   SpreadsheetApp.getUi().showSidebar(html);
 }
 
@@ -103,6 +103,13 @@ function apiGetOperations(sketch) {
  */
 function apiInsertRows(payload) {
   return insertKbRows_(payload);
+}
+
+/**
+ * @param {Object} payload {sheetName, rows: Array}
+ */
+function apiInsertQueue(payload) {
+  return insertKbQueue_(payload);
 }
 
 /**
