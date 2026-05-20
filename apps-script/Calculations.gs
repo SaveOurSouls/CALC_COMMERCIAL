@@ -47,7 +47,7 @@ function calculateOperationPrice_(op, timeSec, n) {
   }
 
   if (type === CONFIG.opTypes.variable || type === CONFIG.opTypes.static) {
-    return timeSec * op.humanMag + op.timeMachine * n * op.unitPriceMachine;
+    return timeSec * op.unitPriceHumanMag + op.timeMachine * n * op.unitPriceMachine;
   }
 
   return 0;
@@ -100,7 +100,8 @@ function buildTimeFormulaTemplate_(cols) {
 function buildPriceFormulaTemplate_(cols) {
   var timeRef = cols.timeTotal;
   var linear = timeRef + '*' + cols.unitPriceMachine + '+' + timeRef + '*' + cols.unitPriceHumanMag;
-  var other = timeRef + '*' + cols.humanMag + '+' + cols.timeMachine + '*' + cols.n + '*' + cols.unitPriceMachine;
+  var other = timeRef + '*' + cols.unitPriceHumanMag + '+' + cols.timeMachine + '*' + cols.n +
+    '*' + cols.unitPriceMachine;
   return '=IF(' + cols.opType + '="' + CONFIG.opTypes.linear + '",' + linear + ',' +
     'IF(OR(' + cols.opType + '="' + CONFIG.opTypes.variable + '",' +
     cols.opType + '="' + CONFIG.opTypes.static + '"),' + other + ',""))';

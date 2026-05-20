@@ -47,7 +47,19 @@ function onEditKbHandler_(e) {
     }
   }
 
-  if (col === colMap.number || col === colMap.n || col === colMap.l) {
+  if (col === colMap.number) {
+    var sketchForNum = String(sheet.getRange(row, colMap.sketch).getValue() || '').trim();
+    var numVal = String(e.value || sheet.getRange(row, colMap.number).getValue() || '').trim();
+    if (sketchForNum && numVal) {
+      var opNum = findOperation_(sketchForNum, numVal);
+      if (opNum) {
+        fillRowFromDb_(sheet, row, opNum);
+      }
+    }
+    recalcKbRow_(sheet, row, colMap);
+  }
+
+  if (col === colMap.n || col === colMap.l) {
     recalcKbRow_(sheet, row, colMap);
   }
 }
@@ -130,35 +142,22 @@ function migrateKbSheetValidations() {
     return;
   }
 
-  var ui = SpreadsheetApp.getUi();
-  var resp = ui.prompt(
-    'Миграция без TL_КБ',
-    'Введите букву колонки «Название» на листе БД.ОП (например A):',
-    ui.ButtonSet.OK_CANCEL
-  );
-  if (resp.getSelectedButton() !== ui.Button.OK) {
-    return;
-  }
-  var sketchDbCol = resp.getResponseText().trim().toUpperCase();
-  resp = ui.prompt('Буква колонки «Номер» на БД.ОП (например B):', ui.ButtonSet.OK_CANCEL);
-  if (resp.getSelectedButton() !== ui.Button.OK) {
-    return;
-  }
-  var numberDbCol = resp.getResponseText().trim().toUpperCase();
-
+  var numberDbCol = CONFIG.dbColLetters.number;
+  var sketchDbCol = CONFIG.dbColLetters.sketch;
   var colMap = resolveKbColumns_(sheet);
   var lastRow = Math.max(sheet.getLastRow(), CONFIG.kbDataStartRow + 50);
   var sketchLetter = columnIndexToLetter_(colMap.sketch);
+  var exampleRow = CONFIG.kbDataStartRow;
 
   for (var r = CONFIG.kbDataStartRow; r <= lastRow; r++) {
     applyNumberValidationForRow_(sheet, r, colMap);
   }
 
-  ui.alert(
-    'Списки «Номер» обновлены по текущему эскизу в каждой строке.\n\n' +
-      'Для полностью динамического списка без скрипта задайте вручную проверку данных:\n' +
+  SpreadsheetApp.getUi().alert(
+    'Списки «Номер» обновлены.\n\n' +
+      'Формула FILTER для проверки данных (колонка «Номер», данные с строки ' + exampleRow + '):\n' +
       '=SORT(UNIQUE(FILTER(' + CONFIG.dbSheet + '!' + numberDbCol + ':' + numberDbCol + ',' +
-      CONFIG.dbSheet + '!' + sketchDbCol + ':' + sketchDbCol + '=$' + sketchLetter + '2)))\n' +
-      '(относительная ссылка на строку). Листы TL_* можно скрыть или удалить.'
+      CONFIG.dbSheet + '!' + sketchDbCol + ':' + sketchDbCol + '=$' + sketchLetter + exampleRow + ')))\n\n' +
+      'Листы TL_* можно скрыть или удалить.'
   );
 }

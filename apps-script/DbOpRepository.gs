@@ -15,26 +15,6 @@ function getDbSheet_() {
 }
 
 /**
- * @returns {Object.<string, number>} заголовок -> индекс колонки (1-based)
- */
-function getDbHeaderMap_() {
-  var sheet = getDbSheet_();
-  var lastCol = sheet.getLastColumn();
-  if (lastCol < 1) {
-    throw new Error('Лист ' + CONFIG.dbSheet + ' пуст.');
-  }
-  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-  var map = {};
-  headers.forEach(function (h, i) {
-    var key = String(h || '').trim();
-    if (key) {
-      map[key] = i + 1;
-    }
-  });
-  return map;
-}
-
-/**
  * @param {Object.<string, number>} headerMap
  * @param {string} fieldKey ключ из CONFIG.db
  * @returns {number}
@@ -60,17 +40,14 @@ function loadDbOperations_() {
     return [];
   }
 
-  var cols = [
+  var fields = [
     'sketch', 'number', 'opType', 'rollSpeed', 'toolWorkSpeed', 'toolOpCount',
-    'timeHuman', 'timeMachine', 'unitPriceHuman', 'unitPriceMachine',
-    'unitPriceHumanMag', 'humanMag'
+    'timeHuman', 'timeMachine', 'unitPriceHuman', 'unitPriceMachine', 'unitPriceHumanMag'
   ];
-  var colIndexes = cols.map(function (k) {
+  var maxCol = Math.max.apply(null, fields.map(function (k) {
     return dbCol_(headerMap, k);
-  });
-  var maxCol = Math.max.apply(null, colIndexes);
-  var width = maxCol;
-  var values = sheet.getRange(start, 1, lastRow - start + 1, width).getValues();
+  }));
+  var values = sheet.getRange(start, 1, lastRow - start + 1, maxCol).getValues();
 
   var out = [];
   values.forEach(function (row, idx) {
@@ -91,8 +68,7 @@ function loadDbOperations_() {
       timeMachine: num_(row[dbCol_(headerMap, 'timeMachine') - 1]),
       unitPriceHuman: num_(row[dbCol_(headerMap, 'unitPriceHuman') - 1]),
       unitPriceMachine: num_(row[dbCol_(headerMap, 'unitPriceMachine') - 1]),
-      unitPriceHumanMag: num_(row[dbCol_(headerMap, 'unitPriceHumanMag') - 1]),
-      humanMag: num_(row[dbCol_(headerMap, 'humanMag') - 1])
+      unitPriceHumanMag: num_(row[dbCol_(headerMap, 'unitPriceHumanMag') - 1])
     };
     rec.key = rec.sketch + '\u0001' + rec.number;
     out.push(rec);
