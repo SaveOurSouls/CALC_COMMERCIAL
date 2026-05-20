@@ -1,9 +1,11 @@
 /**
- * Расчёт колонки «8» (время) и «Цена» по правилам из ТЗ.
+ * Расчёт колонок «8» (суммарное время операции), «9» (суммарное время машины) и «Цена».
  */
 
 /**
- * @param {Object} op запись из БД.ОП
+ * Суммарное время операции (кол. 8).
+ *
+ * @param {Object} op
  * @param {number} n
  * @param {number} l
  * @returns {number}
@@ -26,6 +28,34 @@ function calculateOperationTime_(op, n, l) {
 
   if (type === CONFIG.opTypes.variable || type === CONFIG.opTypes.static) {
     return op.timeHuman * n;
+  }
+
+  return 0;
+}
+
+/**
+ * Суммарное время машины, сек (кол. 9).
+ *
+ * @param {Object} op
+ * @param {number} n
+ * @param {number} l
+ * @returns {number}
+ */
+function calculateMachineTime_(op, n, l) {
+  var type = normalizeOpType_(op.opType);
+  n = num_(n);
+  l = num_(l);
+
+  if (type === CONFIG.opTypes.linear) {
+    var roll = op.rollSpeed;
+    if (!roll || roll <= 0) {
+      return 0;
+    }
+    return (1 / roll + op.toolWorkSpeed * op.toolOpCount) * l * n;
+  }
+
+  if (type === CONFIG.opTypes.variable || type === CONFIG.opTypes.static) {
+    return op.timeMachine * n;
   }
 
   return 0;
@@ -129,10 +159,14 @@ function recalcKbRow_(sheet, row, colMap) {
   var n = sheet.getRange(row, colMap.n).getValue();
   var l = sheet.getRange(row, colMap.l).getValue();
   var time = calculateOperationTime_(op, n, l);
+  var machineTime = calculateMachineTime_(op, n, l);
   var price = calculateOperationPrice_(op, time, n);
 
   if (colMap.timeTotal) {
     sheet.getRange(row, colMap.timeTotal).setValue(time);
+  }
+  if (colMap.timeMachineTotal) {
+    sheet.getRange(row, colMap.timeMachineTotal).setValue(machineTime);
   }
   if (colMap.price) {
     sheet.getRange(row, colMap.price).setValue(price);
@@ -153,5 +187,5 @@ function recalcActiveKbSheet() {
   for (var r = CONFIG.kbDataStartRow; r <= lastRow; r++) {
     recalcKbRow_(sheet, r, colMap);
   }
-  SpreadsheetApp.getActiveSpreadsheet().toast('Пересчёт времени и цены завершён.', 'КБ', 3);
+  SpreadsheetApp.getActiveSpreadsheet().toast('Пересчёт кол. 8, 9 и Цена завершён.', 'КБ', 3);
 }

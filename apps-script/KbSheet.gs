@@ -37,6 +37,7 @@ function resolveKbColumns_(sheet) {
     l: col(CONFIG.kb.l),
     op: colOptional(CONFIG.kb.op),
     timeTotal: colOptional(CONFIG.kb.timeTotal),
+    timeMachineTotal: colOptional(CONFIG.kb.timeMachineTotal),
     price: colOptional(CONFIG.kb.price),
     opType: colOptional(CONFIG.kb.opType)
   };

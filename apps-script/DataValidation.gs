@@ -41,7 +41,7 @@ function onEditKbHandler_(e) {
     if (sketchVal && number) {
       var op = findOperation_(sketchVal, number);
       if (op) {
-        fillRowFromDb_(sheet, row, op, colMap);
+        fillRowFromDb_(sheet, row, op);
       }
       recalcKbRow_(sheet, row, colMap);
     }
