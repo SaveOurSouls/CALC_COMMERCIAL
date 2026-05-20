@@ -5,7 +5,8 @@
 function onOpen() {
   var ui = SpreadsheetApp.getUi();
   ui.createMenu('Техкарта КБ')
-    .addItem('Панель набора и очереди', 'showKbSidebar')
+    .addItem('Справочник (боковая панель)', 'showKbSidebar')
+    .addItem('Очередь операций (плавающее окно)', 'showKbQueueDialog')
     .addItem('Пересчитать время и цену (активный лист)', 'recalcActiveKbSheet')
     .addItem('Миграция: убрать TL_КБ (валидация FILTER)', 'migrateKbSheetValidations')
     .addItem('Диагностика заголовков БД.ОП', 'showDbHeaderDiagnostics')
@@ -34,9 +35,19 @@ function onEdit(e) {
 
 function showKbSidebar() {
   var html = HtmlService.createHtmlOutputFromFile('Sidebar')
-    .setTitle('Очередь операций')
-    .setWidth(520);
+    .setTitle('Справочник операций')
+    .setWidth(320);
   SpreadsheetApp.getUi().showSidebar(html);
+}
+
+/**
+ * Плавающее окно очереди (не блокирует работу с листом).
+ */
+function showKbQueueDialog() {
+  var html = HtmlService.createHtmlOutputFromFile('QueueDialog')
+    .setWidth(920)
+    .setHeight(680);
+  SpreadsheetApp.getUi().showModelessDialog(html, 'Очередь операций');
 }
 
 function showFormulaHelp() {

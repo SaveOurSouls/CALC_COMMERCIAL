@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <style>
+    * { box-sizing: border-box; }
+    body { font: 13px/1.4 Arial, sans-serif; margin: 0; padding: 12px 14px; color: #202124; }
+    h2 { font-size: 16px; margin: 0 0 4px; }
+    .top { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+    .top label { font-weight: 600; margin-right: 4px; }
+    .top select { min-width: 140px; padding: 6px 8px; }
+    .badge { background: #e8f0fe; color: #1967d2; padding: 4px 10px; border-radius: 12px; font-weight: 600; }
+    .hint { color: #5f6368; font-size: 12px; margin: 0 0 10px; }
+    .toolbar { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+    button { padding: 8px 14px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+    button.primary { background: #1a73e8; color: #fff; border: none; font-weight: 600; }
+    button.secondary { background: #f1f3f4; border: 1px solid #dadce0; }
+    button.danger { background: #fff; border: 1px solid #dadce0; color: #c5221f; }
+    .table-wrap {
+      height: calc(100vh - 200px);
+      min-height: 360px;
+      max-height: 560px;
+      overflow: auto;
+      border: 1px solid #dadce0;
+      border-radius: 6px;
+      background: #fff;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th {
+      position: sticky; top: 0; background: #f8f9fa; z-index: 1;
+      text-align: left; padding: 8px 6px; border-bottom: 2px solid #dadce0;
+      font-size: 11px; text-transform: uppercase; color: #5f6368;
+    }
+    td { padding: 6px; border-bottom: 1px solid #eee; vertical-align: middle; }
+    tr.drag-over td { background: #e8f0fe; }
+    tr.dragging { opacity: .45; }
+    td input { width: 100%; padding: 5px 6px; border: 1px solid #dadce0; border-radius: 3px; }
+    td.num { width: 36px; text-align: center; color: #5f6368; font-weight: 600; }
+    td.handle { width: 28px; text-align: center; cursor: grab; color: #9aa0a6; font-size: 16px; }
+    td.act { width: 100px; white-space: nowrap; }
+    td.act button { padding: 4px 8px; margin-right: 2px; font-size: 12px; }
+    .empty { padding: 40px; text-align: center; color: #5f6368; }
+    #status { margin-top: 10px; font-size: 12px; color: #137333; min-height: 18px; }
+    .err { color: #c5221f; }
+  </style>
+</head>
+<body>
+  <h2>Очередь операций</h2>
+  <p class="hint">Окно можно перемещать. Выделите строку в таблице КБ на листе, затем нажмите «Вставить всё». Порядок строк = порядок в техкарте.</p>
+
+  <div class="top">
+    <span>Вставить в лист:</span>
+    <select id="sheet"></select>
+    <span class="badge" id="queueCount">0 поз.</span>
+    <button type="button" class="secondary" id="btnRefresh">↻ Обновить</button>
+  </div>
+
+  <div class="toolbar">
+    <button type="button" class="primary" id="btnInsertAll">Вставить всё в лист</button>
+    <button type="button" class="secondary" id="btnClear">Очистить очередь</button>
+  </div>
+
+  <div class="table-wrap">
+    <table id="queueTable">
+      <thead>
+        <tr>
+          <th></th>
+          <th>#</th>
+          <th>Эскиз</th>
+          <th>Номер / операция</th>
+          <th>N</th>
+          <th>L</th>
+          <th>OP</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="queueBody"></tbody>
+    </table>
+    <div class="empty" id="queueEmpty" style="display:none">Очередь пуста. Добавляйте операции из боковой панели «Справочник».</div>
+  </div>
+
+  <div id="status"></div>
+
+  <script>
+    var state = { queue: [], nextId: 1, sheetName: '', dragId: null };
+
+    function setStatus(msg, isErr) {
+      var el = document.getElementById('status');
+      el.textContent = msg || '';
+      el.className = isErr ? 'err' : '';
+    }
+
+    function persistQueue(cb) {
+      google.script.run
+        .withSuccessHandler(function (res) {
+          document.getElementById('queueCount').textContent = res.count + ' поз.';
+          if (cb) cb();
+        })
+        .withFailureHandler(function (e) { setStatus(e.message, true); })
+        .apiSaveQueue({
+          queue: state.queue,
+          nextId: state.nextId,
+          sheetName: document.getElementById('sheet').value
+        });
+    }
+
+    function loadFromServer(cb) {
+      google.script.run
+        .withSuccessHandler(function (data) {
+          state.queue = data.queue || [];
+          state.nextId = data.nextId || 1;
+          state.sheetName = data.sheetName || '';
+          fillSheetSelect(data.sheets, data.sheetName);
+          renderTable();
+          document.getElementById('queueCount').textContent = state.queue.length + ' поз.';
+          if (cb) cb();
+        })
+        .withFailureHandler(function (e) { setStatus(e.message, true); })
+        .apiGetQueueState();
+    }
+
+    function fillSheetSelect(sheets, selected) {
+      var sel = document.getElementById('sheet');
+      sel.innerHTML = '';
+      (sheets || []).forEach(function (s) {
+        var o = document.createElement('option');
+        o.value = s;
+        o.textContent = s;
+        sel.appendChild(o);
+      });
+      if (selected) sel.value = selected;
+    }
+
+    function renderTable() {
+      var tbody = document.getElementById('queueBody');
+      var empty = document.getElementById('queueEmpty');
+      var table = document.getElementById('queueTable');
+      tbody.innerHTML = '';
+
+      if (!state.queue.length) {
+        empty.style.display = 'block';
+        table.style.display = 'none';
+        return;
+      }
+      empty.style.display = 'none';
+      table.style.display = 'table';
+
+      state.queue.forEach(function (item, index) {
+        var tr = document.createElement('tr');
+        tr.dataset.id = String(item.id);
+        tr.draggable = true;
+
+        tr.innerHTML =
+          '<td class="handle" title="Перетащить">☰</td>' +
+          '<td class="num">' + (index + 1) + '</td>' +
+          '<td>' + esc_(item.sketch) + '</td>' +
+          '<td><strong>' + esc_(item.number) + '</strong><br><span style="color:#5f6368;font-size:11px">' +
+            esc_(item.opType || '') + '</span></td>' +
+          '<td><input type="number" data-f="n" value="' + item.n + '" step="any"></td>' +
+          '<td><input type="number" data-f="l" value="' + item.l + '" step="any"></td>' +
+          '<td><input type="text" data-f="op" value="' + escAttr_(item.op || '') + '"></td>' +
+          '<td class="act">' +
+            '<button type="button" class="secondary" data-up>↑</button>' +
+            '<button type="button" class="secondary" data-down>↓</button>' +
+            '<button type="button" class="secondary" data-dup>⧉</button>' +
+            '<button type="button" class="danger" data-del>×</button>' +
+          '</td>';
+
+        bindRow_(tr, item);
+        tbody.appendChild(tr);
+      });
+    }
+
+    function esc_(s) {
+      return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    }
+    function escAttr_(s) {
+      return String(s || '').replace(/"/g, '&quot;');
+    }
+
+    function bindRow_(tr, item) {
+      tr.querySelector('[data-up]').onclick = function () { move_(item.id, -1); };
+      tr.querySelector('[data-down]').onclick = function () { move_(item.id, 1); };
+      tr.querySelector('[data-dup]').onclick = function () { dup_(item.id); };
+      tr.querySelector('[data-del]').onclick = function () { del_(item.id); };
+
+      tr.querySelectorAll('input').forEach(function (inp) {
+        inp.onchange = function () {
+          var f = inp.getAttribute('data-f');
+          item[f] = (f === 'n' || f === 'l') ? Number(inp.value) : inp.value;
+          persistQueue();
+        };
+      });
+
+      tr.addEventListener('dragstart', function (e) {
+        state.dragId = item.id;
+        tr.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      tr.addEventListener('dragend', function () {
+        state.dragId = null;
+        tr.classList.remove('dragging');
+        document.querySelectorAll('tr.drag-over').forEach(function (r) {
+          r.classList.remove('drag-over');
+        });
+      });
+      tr.addEventListener('dragover', function (e) {
+        e.preventDefault();
+        tr.classList.add('drag-over');
+      });
+      tr.addEventListener('dragleave', function () { tr.classList.remove('drag-over'); });
+      tr.addEventListener('drop', function (e) {
+        e.preventDefault();
+        tr.classList.remove('drag-over');
+        dropOn_(item.id);
+      });
+    }
+
+    function move_(id, dir) {
+      var i = state.queue.findIndex(function (q) { return q.id === id; });
+      if (i < 0) return;
+      var j = i + dir;
+      if (j < 0 || j >= state.queue.length) return;
+      var t = state.queue[i];
+      state.queue[i] = state.queue[j];
+      state.queue[j] = t;
+      persistQueue(function () { renderTable(); });
+    }
+
+    function dup_(id) {
+      var i = state.queue.findIndex(function (q) { return q.id === id; });
+      if (i < 0) return;
+      var c = JSON.parse(JSON.stringify(state.queue[i]));
+      c.id = state.nextId++;
+      state.queue.splice(i + 1, 0, c);
+      persistQueue(function () { renderTable(); });
+    }
+
+    function del_(id) {
+      state.queue = state.queue.filter(function (q) { return q.id !== id; });
+      persistQueue(function () { renderTable(); });
+    }
+
+    function dropOn_(targetId) {
+      if (state.dragId === null || state.dragId === targetId) return;
+      var from = state.queue.findIndex(function (q) { return q.id === state.dragId; });
+      var to = state.queue.findIndex(function (q) { return q.id === targetId; });
+      if (from < 0 || to < 0) return;
+      var m = state.queue.splice(from, 1)[0];
+      state.queue.splice(to, 0, m);
+      persistQueue(function () { renderTable(); });
+    }
+
+    function insertAll() {
+      if (!state.queue.length) {
+        setStatus('Очередь пуста', true);
+        return;
+      }
+      var sheetName = document.getElementById('sheet').value;
+      setStatus('Вставка ' + state.queue.length + ' строк…');
+      document.getElementById('btnInsertAll').disabled = true;
+
+      var rows = state.queue.map(function (item) {
+        return {
+          sketch: item.sketch,
+          number: item.number,
+          n: item.n,
+          l: item.l,
+          op: item.op || ''
+        };
+      });
+
+      google.script.run
+        .withSuccessHandler(function (res) {
+          document.getElementById('btnInsertAll').disabled = false;
+          setStatus(res.hint || 'Готово');
+        })
+        .withFailureHandler(function (e) {
+          document.getElementById('btnInsertAll').disabled = false;
+          setStatus(e.message, true);
+        })
+        .apiInsertQueue({ sheetName: sheetName, rows: rows });
+    }
+
+    document.getElementById('sheet').onchange = function () {
+      persistQueue();
+    };
+    document.getElementById('btnInsertAll').onclick = insertAll;
+    document.getElementById('btnRefresh').onclick = function () {
+      loadFromServer(function () { setStatus('Обновлено'); });
+    };
+    document.getElementById('btnClear').onclick = function () {
+      if (state.queue.length && !confirm('Очистить всю очередь?')) return;
+      google.script.run
+        .withSuccessHandler(function () {
+          state.queue = [];
+          state.nextId = 1;
+          renderTable();
+          document.getElementById('queueCount').textContent = '0 поз.';
+          setStatus('');
+        })
+        .apiClearQueue();
+    };
+
+    loadFromServer();
+    setInterval(function () { loadFromServer(); }, 8000);
+  </script>
+</body>
+</html>

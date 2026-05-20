@@ -4,99 +4,57 @@
   <base target="_top">
   <meta charset="utf-8">
   <style>
-    * { box-sizing: border-box; }
-    body { font: 12px/1.35 Arial, sans-serif; margin: 0; padding: 10px; color: #222; }
-    h2 { font-size: 14px; margin: 0 0 8px; }
-    h3 { font-size: 12px; margin: 12px 0 6px; color: #444; text-transform: uppercase; letter-spacing: .03em; }
-    label { display: block; margin: 6px 0 3px; font-weight: 600; }
-    select, input, button { width: 100%; padding: 5px 7px; }
-    button { margin-top: 6px; cursor: pointer; border-radius: 4px; }
+    body { font: 13px/1.4 Arial, sans-serif; margin: 0; padding: 12px; color: #222; }
+    h2 { font-size: 15px; margin: 0 0 10px; }
+    label { display: block; margin: 8px 0 4px; font-weight: 600; }
+    select, input, button { width: 100%; box-sizing: border-box; padding: 6px 8px; }
+    button { margin-top: 8px; cursor: pointer; border-radius: 4px; }
     button.primary { background: #1a73e8; color: #fff; border: none; }
-    button.secondary { background: #f1f3f4; border: 1px solid #dadce0; }
-    button.danger { background: #fff; border: 1px solid #dadce0; color: #c5221f; }
-    button.success { background: #137333; color: #fff; border: none; font-weight: 600; }
-    button.icon { width: auto; padding: 2px 6px; margin: 0 2px 0 0; font-size: 11px; }
-    .row2 { display: grid; grid-template-columns: 1fr 1fr 70px; gap: 6px; }
-    #ops { height: 100px; }
-    .panel { border: 1px solid #dadce0; border-radius: 6px; padding: 8px; margin-bottom: 10px; background: #fafafa; }
-    .queue-wrap { max-height: 280px; overflow-y: auto; border: 1px solid #dadce0; border-radius: 4px; background: #fff; }
-    .queue-item {
-      display: grid;
-      grid-template-columns: 22px 1fr auto;
-      gap: 6px;
-      align-items: start;
-      padding: 6px 8px;
-      border-bottom: 1px solid #eee;
-      cursor: grab;
+    button.queue { background: #137333; color: #fff; border: none; font-weight: 600; }
+    button.secondary { background: #f1f3f4; border: 1px solid #dadce0; color: #202124; }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr 64px; gap: 6px; }
+    #ops { height: 120px; }
+    .badge {
+      display: inline-block; background: #e8f0fe; color: #1967d2;
+      padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; margin: 8px 0;
     }
-    .queue-item.drag-over { background: #e8f0fe; }
-    .queue-item.dragging { opacity: .5; }
-    .qi-main { min-width: 0; }
-    .qi-title { font-weight: 600; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .qi-sub { color: #5f6368; font-size: 10px; }
-    .qi-fields { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; margin-top: 4px; }
-    .qi-fields input { width: 100%; padding: 3px 4px; font-size: 11px; }
-    .qi-actions { display: flex; flex-direction: column; gap: 2px; }
-    .queue-empty { padding: 16px; text-align: center; color: #5f6368; font-size: 11px; }
-    .queue-footer { display: flex; gap: 6px; margin-top: 8px; }
-    .queue-footer button { flex: 1; }
-    .badge { display: inline-block; background: #e8f0fe; color: #1967d2; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
-    .hint { color: #5f6368; font-size: 10px; margin-top: 4px; }
-    #status { margin-top: 8px; min-height: 16px; color: #137333; font-size: 11px; }
+    .hint { color: #5f6368; font-size: 11px; margin-top: 6px; line-height: 1.45; }
+    #status { margin-top: 10px; font-size: 11px; color: #137333; min-height: 16px; }
     .err { color: #c5221f; }
-    .handle { color: #9aa0a6; font-size: 14px; line-height: 1; user-select: none; }
   </style>
 </head>
 <body>
-  <h2>Очередь техкарты</h2>
+  <h2>Справочник</h2>
+  <p class="hint">Добавляйте операции в очередь. Список и порядок — в <strong>плавающем окне</strong> (удобно для 15–20 позиций).</p>
 
-  <div class="panel">
-    <h3>Справочник</h3>
-    <label>Лист КБ</label>
-    <select id="sheet"></select>
+  <div class="badge" id="queueBadge">В очереди: 0</div>
 
-    <label>Эскиз проекта</label>
-    <select id="sketch"></select>
+  <label>Лист КБ (для очереди)</label>
+  <select id="sheet"></select>
 
-    <label>Операция</label>
-    <input type="search" id="search" placeholder="Поиск…">
-    <select id="ops" size="5"></select>
+  <label>Эскиз проекта</label>
+  <select id="sketch"></select>
 
-    <div class="row2">
-      <div><label>N</label><input type="number" id="n" value="1" min="0" step="any"></div>
-      <div><label>L</label><input type="number" id="l" value="0" min="0" step="any"></div>
-      <div><label>× в очередь</label><input type="number" id="addCount" value="1" min="1" max="20" step="1"></div>
-    </div>
-    <label>OP</label>
-    <input type="text" id="op" placeholder="необязательно">
+  <label>Операция</label>
+  <input type="search" id="search" placeholder="Поиск по номеру…">
+  <select id="ops" size="8"></select>
 
-    <button class="primary" id="btnAdd">+ Добавить в очередь</button>
+  <div class="row2">
+    <div><label>N</label><input type="number" id="n" value="1" min="0" step="any"></div>
+    <div><label>L</label><input type="number" id="l" value="0" min="0" step="any"></div>
+    <div><label>×</label><input type="number" id="addCount" value="1" min="1" max="20"></div>
   </div>
 
-  <div class="panel">
-    <h3>Очередь <span class="badge" id="queueCount">0</span></h3>
-    <p class="hint">Перетащите строки для порядка. N/L можно править здесь. Одна вставка в таблицу — один запрос.</p>
-    <div class="queue-wrap" id="queueWrap">
-      <div class="queue-empty" id="queueEmpty">Очередь пуста</div>
-      <div id="queueList"></div>
-    </div>
-    <div class="queue-footer">
-      <button class="success" id="btnInsertAll">Вставить всё в лист</button>
-      <button class="danger" id="btnClear">Очистить</button>
-    </div>
-  </div>
+  <label>OP</label>
+  <input type="text" id="op" placeholder="необязательно">
 
-  <details>
-    <summary style="cursor:pointer;font-size:11px;color:#5f6368">Быстрая вставка одной строки</summary>
-    <button class="secondary" id="btnInsertOne" style="margin-top:6px">Вставить сейчас (без очереди)</button>
-  </details>
+  <button class="primary" id="btnAdd">+ В очередь</button>
+  <button class="queue" id="btnOpenQueue">▣ Открыть очередь (плавающее окно)</button>
 
   <div id="status"></div>
 
   <script>
-    var STORAGE_KEY = 'kbOpQueue';
     var state = { opsBySketch: {}, operations: [], queue: [], nextId: 1 };
-    var dragId = null;
 
     function setStatus(msg, isErr) {
       var el = document.getElementById('status');
@@ -104,32 +62,40 @@
       el.className = isErr ? 'err' : '';
     }
 
+    function refreshBadge() {
+      google.script.run
+        .withSuccessHandler(function (data) {
+          document.getElementById('queueBadge').textContent = 'В очереди: ' + (data.count || 0);
+          state.queue = data.queue || [];
+          state.nextId = data.nextId || 1;
+          if (data.sheetName) {
+            document.getElementById('sheet').value = data.sheetName;
+          }
+        })
+        .apiGetQueueState();
+    }
+
     function saveQueue() {
-      try {
-        sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ queue: state.queue, nextId: state.nextId }));
-      } catch (e) { /* ignore */ }
+      google.script.run
+        .withSuccessHandler(function (res) {
+          document.getElementById('queueBadge').textContent = 'В очереди: ' + res.count;
+          setStatus('В очереди: ' + res.count);
+        })
+        .withFailureHandler(function (e) { setStatus(e.message, true); })
+        .apiSaveQueue({
+          queue: state.queue,
+          nextId: state.nextId,
+          sheetName: document.getElementById('sheet').value
+        });
     }
 
-    function loadQueue() {
-      try {
-        var raw = sessionStorage.getItem(STORAGE_KEY);
-        if (!raw) return;
-        var data = JSON.parse(raw);
-        if (data.queue && data.queue.length) {
-          state.queue = data.queue;
-          state.nextId = data.nextId || state.queue.length + 1;
-        }
-      } catch (e) { /* ignore */ }
-    }
-
-    function fillSelect(id, items, getVal, getLabel, placeholder) {
+    function fillSelect(id, items, getVal, getLabel, ph) {
       var sel = document.getElementById(id);
       sel.innerHTML = '';
       if (!items || !items.length) {
-        var empty = document.createElement('option');
-        empty.value = '';
-        empty.textContent = placeholder || '— нет данных —';
-        sel.appendChild(empty);
+        var o = document.createElement('option');
+        o.textContent = ph || '—';
+        sel.appendChild(o);
         return;
       }
       items.forEach(function (item) {
@@ -140,34 +106,15 @@
       });
     }
 
-    function getSelectedOp() {
-      var sketch = document.getElementById('sketch').value;
-      var number = document.getElementById('ops').value;
-      if (!sketch || !number) return null;
-      var op = state.operations.find(function (o) { return o.number === number; });
-      return {
-        sketch: sketch,
-        number: number,
-        opType: op ? op.opType : '',
-        label: op ? op.label : number
-      };
-    }
-
     function loadOperations() {
       var sketch = document.getElementById('sketch').value;
       state.operations = state.opsBySketch[sketch] || [];
-      renderOps();
-    }
-
-    function renderOps() {
       var q = document.getElementById('search').value.trim().toLowerCase();
-      var filtered = state.operations.filter(function (op) {
-        return !q || String(op.number).toLowerCase().indexOf(q) >= 0 ||
-          String(op.opType).toLowerCase().indexOf(q) >= 0;
-      });
       var sel = document.getElementById('ops');
       sel.innerHTML = '';
-      filtered.forEach(function (op) {
+      state.operations.filter(function (op) {
+        return !q || String(op.number).toLowerCase().indexOf(q) >= 0;
+      }).forEach(function (op) {
         var o = document.createElement('option');
         o.value = op.number;
         o.textContent = op.label;
@@ -176,237 +123,47 @@
     }
 
     function addToQueue() {
-      var base = getSelectedOp();
-      if (!base) {
+      var sketch = document.getElementById('sketch').value;
+      var number = document.getElementById('ops').value;
+      if (!sketch || !number) {
         setStatus('Выберите эскиз и операцию', true);
         return;
       }
-      var times = parseInt(String(document.getElementById('addCount').value), 10);
-      if (isNaN(times) || times < 1) times = 1;
-      times = Math.min(times, 20);
+      var op = state.operations.find(function (o) { return o.number === number; }) || {};
+      var times = parseInt(document.getElementById('addCount').value, 10) || 1;
+      times = Math.min(Math.max(times, 1), 20);
       var n = Number(document.getElementById('n').value);
       var l = Number(document.getElementById('l').value);
       var opText = document.getElementById('op').value;
 
-      for (var i = 0; i < times; i++) {
-        state.queue.push({
-          id: state.nextId++,
-          sketch: base.sketch,
-          number: base.number,
-          label: base.label,
-          opType: base.opType,
-          n: n,
-          l: l,
-          op: opText
-        });
-      }
-      saveQueue();
-      renderQueue();
-      setStatus('В очереди: ' + state.queue.length);
-    }
-
-    function removeFromQueue(id) {
-      state.queue = state.queue.filter(function (item) { return item.id !== id; });
-      saveQueue();
-      renderQueue();
-    }
-
-    function duplicateInQueue(id) {
-      var item = state.queue.find(function (q) { return q.id === id; });
-      if (!item) return;
-      var copy = JSON.parse(JSON.stringify(item));
-      copy.id = state.nextId++;
-      var idx = state.queue.findIndex(function (q) { return q.id === id; });
-      state.queue.splice(idx + 1, 0, copy);
-      saveQueue();
-      renderQueue();
-    }
-
-    function moveQueue(id, dir) {
-      var idx = state.queue.findIndex(function (q) { return q.id === id; });
-      if (idx < 0) return;
-      var newIdx = idx + dir;
-      if (newIdx < 0 || newIdx >= state.queue.length) return;
-      var tmp = state.queue[idx];
-      state.queue[idx] = state.queue[newIdx];
-      state.queue[newIdx] = tmp;
-      saveQueue();
-      renderQueue();
-    }
-
-    function renderQueue() {
-      document.getElementById('queueCount').textContent = String(state.queue.length);
-      var list = document.getElementById('queueList');
-      var empty = document.getElementById('queueEmpty');
-      list.innerHTML = '';
-
-      if (!state.queue.length) {
-        empty.style.display = 'block';
-        return;
-      }
-      empty.style.display = 'none';
-
-      state.queue.forEach(function (item, index) {
-        var el = document.createElement('div');
-        el.className = 'queue-item';
-        el.dataset.id = String(item.id);
-        el.draggable = true;
-
-        el.innerHTML =
-          '<div class="handle" title="Перетащить">☰</div>' +
-          '<div class="qi-main">' +
-            '<div class="qi-title">' + (index + 1) + '. ' + escapeHtml_(item.label || item.number) + '</div>' +
-            '<div class="qi-sub">' + escapeHtml_(item.sketch) + '</div>' +
-            '<div class="qi-fields">' +
-              '<input type="number" data-field="n" value="' + item.n + '" title="N" step="any">' +
-              '<input type="number" data-field="l" value="' + item.l + '" title="L" step="any">' +
-              '<input type="text" data-field="op" value="' + escapeAttr_(item.op || '') + '" title="OP">' +
-            '</div>' +
-          '</div>' +
-          '<div class="qi-actions">' +
-            '<button type="button" class="icon secondary" data-up>↑</button>' +
-            '<button type="button" class="icon secondary" data-down>↓</button>' +
-            '<button type="button" class="icon secondary" data-dup>⧉</button>' +
-            '<button type="button" class="icon danger" data-del>×</button>' +
-          '</div>';
-
-        el.querySelector('[data-up]').onclick = function () { moveQueue(item.id, -1); };
-        el.querySelector('[data-down]').onclick = function () { moveQueue(item.id, 1); };
-        el.querySelector('[data-dup]').onclick = function () { duplicateInQueue(item.id); };
-        el.querySelector('[data-del]').onclick = function () { removeFromQueue(item.id); };
-
-        el.querySelectorAll('.qi-fields input').forEach(function (inp) {
-          inp.onchange = function () {
-            var field = inp.getAttribute('data-field');
-            if (field === 'n' || field === 'l') {
-              item[field] = Number(inp.value);
-            } else {
-              item[field] = inp.value;
-            }
-            saveQueue();
-          };
-        });
-
-        el.addEventListener('dragstart', function (ev) {
-          dragId = item.id;
-          el.classList.add('dragging');
-          ev.dataTransfer.effectAllowed = 'move';
-        });
-        el.addEventListener('dragend', function () {
-          dragId = null;
-          el.classList.remove('dragging');
-          document.querySelectorAll('.queue-item').forEach(function (n) {
-            n.classList.remove('drag-over');
-          });
-        });
-        el.addEventListener('dragover', function (ev) {
-          ev.preventDefault();
-          ev.dataTransfer.dropEffect = 'move';
-          el.classList.add('drag-over');
-        });
-        el.addEventListener('dragleave', function () {
-          el.classList.remove('drag-over');
-        });
-        el.addEventListener('drop', function (ev) {
-          ev.preventDefault();
-          el.classList.remove('drag-over');
-          if (dragId === null || dragId === item.id) return;
-          var fromIdx = state.queue.findIndex(function (q) { return q.id === dragId; });
-          var toIdx = state.queue.findIndex(function (q) { return q.id === item.id; });
-          if (fromIdx < 0 || toIdx < 0) return;
-          var moved = state.queue.splice(fromIdx, 1)[0];
-          state.queue.splice(toIdx, 0, moved);
+      google.script.run
+        .withSuccessHandler(function (data) {
+          state.queue = data.queue || [];
+          state.nextId = data.nextId || 1;
+          for (var i = 0; i < times; i++) {
+            state.queue.push({
+              id: state.nextId++,
+              sketch: sketch,
+              number: number,
+              label: op.label || number,
+              opType: op.opType || '',
+              n: n,
+              l: l,
+              op: opText
+            });
+          }
           saveQueue();
-          renderQueue();
-        });
-
-        list.appendChild(el);
-      });
-    }
-
-    function escapeHtml_(s) {
-      return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    }
-
-    function escapeAttr_(s) {
-      return String(s || '').replace(/"/g, '&quot;');
-    }
-
-    function buildPayloadRows() {
-      return state.queue.map(function (item) {
-        return {
-          sketch: item.sketch,
-          number: item.number,
-          n: item.n,
-          l: item.l,
-          op: item.op || ''
-        };
-      });
-    }
-
-    function insertAll() {
-      if (!state.queue.length) {
-        setStatus('Очередь пуста', true);
-        return;
-      }
-      var sheetName = document.getElementById('sheet').value;
-      if (!sheetName) {
-        setStatus('Выберите лист КБ', true);
-        return;
-      }
-      setStatus('Вставка ' + state.queue.length + ' строк…');
-      document.getElementById('btnInsertAll').disabled = true;
-
-      google.script.run
-        .withSuccessHandler(function (res) {
-          document.getElementById('btnInsertAll').disabled = false;
-          setStatus((res.hint || 'Готово') + ' Можно очистить очередь.');
         })
-        .withFailureHandler(function (e) {
-          document.getElementById('btnInsertAll').disabled = false;
-          setStatus(e.message, true);
-        })
-        .apiInsertQueue({ sheetName: sheetName, rows: buildPayloadRows() });
-    }
-
-    function insertOne() {
-      var base = getSelectedOp();
-      if (!base) {
-        setStatus('Выберите операцию', true);
-        return;
-      }
-      var payload = {
-        sheetName: document.getElementById('sheet').value,
-        sketch: base.sketch,
-        number: base.number,
-        n: Number(document.getElementById('n').value),
-        l: Number(document.getElementById('l').value),
-        op: document.getElementById('op').value,
-        count: 1
-      };
-      setStatus('Вставка…');
-      google.script.run
-        .withSuccessHandler(function (res) {
-          setStatus(res.hint || 'Вставлено');
-        })
-        .withFailureHandler(function (e) { setStatus(e.message, true); })
-        .apiInsertRows(payload);
+        .apiGetQueueState();
     }
 
     function init() {
-      loadQueue();
-      renderQueue();
-      setStatus('Загрузка справочника…');
-
+      setStatus('Загрузка…');
       google.script.run
         .withSuccessHandler(function (data) {
-          if (data.error) {
-            setStatus(data.error, true);
-          } else {
-            setStatus(state.queue.length ? 'В очереди: ' + state.queue.length : '');
-          }
+          setStatus('');
           state.opsBySketch = data.opsBySketch || {};
-          fillSelect('sheet', data.sheets, function (s) { return s; }, function (s) { return s; }, 'Нет листов КБ');
+          fillSelect('sheet', data.sheets, function (s) { return s; }, function (s) { return s; }, 'Нет КБ');
           fillSelect('sketch', data.sketches, function (s) { return s; }, function (s) { return s; }, 'Нет эскизов');
           if (data.activeSheet && data.sheets && data.sheets.indexOf(data.activeSheet) >= 0) {
             document.getElementById('sheet').value = data.activeSheet;
@@ -415,23 +172,27 @@
             document.getElementById('sketch').selectedIndex = 0;
             loadOperations();
           }
+          refreshBadge();
         })
         .withFailureHandler(function (e) { setStatus(e.message, true); })
         .apiGetInitialData();
     }
 
-    document.getElementById('sketch').addEventListener('change', loadOperations);
-    document.getElementById('search').addEventListener('input', renderOps);
-    document.getElementById('btnAdd').addEventListener('click', addToQueue);
-    document.getElementById('btnInsertAll').addEventListener('click', insertAll);
-    document.getElementById('btnClear').addEventListener('click', function () {
-      if (state.queue.length && !confirm('Очистить очередь?')) return;
-      state.queue = [];
-      saveQueue();
-      renderQueue();
-      setStatus('');
-    });
-    document.getElementById('btnInsertOne').addEventListener('click', insertOne);
+    document.getElementById('sketch').onchange = loadOperations;
+    document.getElementById('search').oninput = loadOperations;
+    document.getElementById('sheet').onchange = function () {
+      google.script.run.withSuccessHandler(refreshBadge).apiSaveQueue({
+        queue: state.queue, nextId: state.nextId, sheetName: document.getElementById('sheet').value
+      });
+    };
+    document.getElementById('btnAdd').onclick = addToQueue;
+    document.getElementById('btnOpenQueue').onclick = function () {
+      setStatus('Открываю окно…');
+      google.script.run
+        .withSuccessHandler(function () { setStatus('Окно очереди открыто'); })
+        .withFailureHandler(function (e) { setStatus(e.message, true); })
+        .showKbQueueDialog();
+    };
 
     init();
   </script>
