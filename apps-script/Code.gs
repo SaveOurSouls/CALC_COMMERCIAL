@@ -3,6 +3,7 @@
  */
 
 function onOpen() {
+  clearQueueDialogOpenFlag_();
   var ui = SpreadsheetApp.getUi();
   ui.createMenu('Техкарта КБ')
     .addItem('Справочник (боковая панель)', 'showKbSidebar')
@@ -47,7 +48,6 @@ function showKbQueueDialog() {
   if (isQueueDialogOpen_()) {
     return { alreadyOpen: true };
   }
-  markQueueDialogPing_();
   var html = HtmlService.createHtmlOutputFromFile('QueueDialog')
     .setWidth(920)
     .setHeight(680);
@@ -86,10 +86,13 @@ function apiGetInitialData() {
   try {
     var info = getDbHeaderInfo_();
     var sidebarIndex = getDbOpsSidebarIndex_();
+    var queueCount = loadQueue_().queue.length;
+
     return {
       sheets: sheets,
       sketches: sidebarIndex.sketches,
       opsBySketch: sidebarIndex.opsBySketch,
+      queueCount: queueCount,
       activeSheet: active,
       dbHeaderRow: info.headerRow,
       hint: sheets.length ? '' : 'Нет листов КБ1, КБ2… Проверьте имена листов.'

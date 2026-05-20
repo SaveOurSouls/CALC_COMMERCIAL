@@ -79,7 +79,7 @@
         .withSuccessHandler(function (data) {
           document.getElementById('queueBadge').textContent = 'В очереди: ' + (data.count || 0);
         })
-        .apiGetQueueState();
+        .apiGetQueueCount();
     }
 
     function fillSelect(id, items, getVal, getLabel, ph) {
@@ -158,23 +158,33 @@
     function init() {
       setStatus('Загрузка…');
       google.script.run
-        .withSuccessHandler(function (data) {
-          setStatus('');
-          state.opsBySketch = data.opsBySketch || {};
-          fillSelect('sheet', data.sheets, function (s) { return s; }, function (s) { return s; }, 'Нет КБ');
-          fillSelect('sketch', data.sketches, function (s) { return s; }, function (s) { return s; }, 'Нет эскизов');
-          if (data.activeSheet && data.sheets && data.sheets.indexOf(data.activeSheet) >= 0) {
-            document.getElementById('sheet').value = data.activeSheet;
-          }
-          if (data.sketches && data.sketches.length) {
-            document.getElementById('sketch').selectedIndex = 0;
-            loadOperations();
-          }
-          refreshBadge();
-          updateOpenQueueButton();
+        .withSuccessHandler(function () {
+          google.script.run
+            .withSuccessHandler(function (data) {
+              setStatus('');
+              state.opsBySketch = data.opsBySketch || {};
+              fillSelect('sheet', data.sheets, function (s) { return s; }, function (s) { return s; }, 'Нет КБ');
+              fillSelect('sketch', data.sketches, function (s) { return s; }, function (s) { return s; }, 'Нет эскизов');
+              if (data.activeSheet && data.sheets && data.sheets.indexOf(data.activeSheet) >= 0) {
+                document.getElementById('sheet').value = data.activeSheet;
+              }
+              if (data.sketches && data.sketches.length) {
+                document.getElementById('sketch').selectedIndex = 0;
+                loadOperations();
+              }
+              document.getElementById('queueBadge').textContent = 'В очереди: ' + (data.queueCount || 0);
+              enableOpenQueueButton_();
+            })
+            .withFailureHandler(function (e) { setStatus(e.message, true); })
+            .apiGetInitialData();
         })
-        .withFailureHandler(function (e) { setStatus(e.message, true); })
-        .apiGetInitialData();
+        .apiSidebarReady();
+    }
+
+    function enableOpenQueueButton_() {
+      var btn = document.getElementById('btnOpenQueue');
+      btn.disabled = false;
+      btn.textContent = '▣ Открыть очередь';
     }
 
     document.getElementById('sketch').onchange = loadOperations;
@@ -197,8 +207,8 @@
     };
 
     init();
-    setInterval(updateOpenQueueButton, 2500);
-    setInterval(refreshBadge, 5000);
+    setInterval(updateOpenQueueButton, 4000);
+    setInterval(refreshBadge, 8000);
   </script>
 </body>
 </html>

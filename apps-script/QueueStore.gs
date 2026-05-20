@@ -4,7 +4,12 @@
 
 var QUEUE_PROP_KEY = 'kbOpQueueV1';
 var QUEUE_DIALOG_PING_KEY = 'kbQueueDialogPing';
-var QUEUE_DIALOG_OPEN_MS = 12000;
+/** Окно считается открытым, если диалог прислал ping не старше N мс */
+var QUEUE_DIALOG_OPEN_MS = 8000;
+
+function clearQueueDialogOpenFlag_() {
+  PropertiesService.getUserProperties().deleteProperty(QUEUE_DIALOG_PING_KEY);
+}
 
 /**
  * @returns {{queue: Array, nextId: number, sheetName: string, sheetsCache: string[]}}
@@ -53,12 +58,20 @@ function markQueueDialogPing_() {
   PropertiesService.getUserProperties().setProperty(QUEUE_DIALOG_PING_KEY, String(Date.now()));
 }
 
+/**
+ * @returns {boolean}
+ */
 function isQueueDialogOpen_() {
   var raw = PropertiesService.getUserProperties().getProperty(QUEUE_DIALOG_PING_KEY);
   if (!raw) {
     return false;
   }
-  return (Date.now() - parseInt(raw, 10)) < QUEUE_DIALOG_OPEN_MS;
+  var ts = parseInt(raw, 10);
+  if (isNaN(ts)) {
+    clearQueueDialogOpenFlag_();
+    return false;
+  }
+  return (Date.now() - ts) < QUEUE_DIALOG_OPEN_MS;
 }
 
 /**
@@ -80,24 +93,39 @@ function apiQueueDialogPing() {
  * @returns {Object}
  */
 function apiQueueDialogClose() {
-  PropertiesService.getUserProperties().deleteProperty(QUEUE_DIALOG_PING_KEY);
+  clearQueueDialogOpenFlag_();
   return { open: false };
 }
 
 /**
- * Один запрос при открытии окна очереди.
+ * Сброс «окно открыто» при F5 / открытии sidebar (диалог при этом уже закрыт).
  *
  * @returns {Object}
  */
-function apiQueueDialogBootstrap() {
-  markQueueDialogPing_();
+function apiSidebarReady() {
+  clearQueueDialogOpenFlag_();
   var data = loadQueue_();
+  return { count: data.queue.length, dialogOpen: false };
+}
+
+/**
+ * Только чтение очереди — без ping (для счётчика в sidebar).
+ *
+ * @returns {Object}
+ */
+function apiGetQueueCount() {
+  var data = loadQueue_();
+  return { count: data.queue.length };
+}
+
+/**
+ * @returns {Object}
+ */
+function buildQueueStateResponse_(data) {
   var sheets = data.sheetsCache;
   if (!sheets || !sheets.length) {
     try {
       sheets = listKbSheetNames_();
-      data.sheetsCache = sheets;
-      saveQueue_(data);
     } catch (e) {
       sheets = [];
     }
@@ -107,7 +135,6 @@ function apiQueueDialogBootstrap() {
   if (!sheetName || sheets.indexOf(sheetName) < 0) {
     sheetName = sheets.indexOf(active) >= 0 ? active : (sheets[0] || active);
   }
-
   return {
     queue: data.queue,
     nextId: data.nextId,
@@ -122,7 +149,26 @@ function apiQueueDialogBootstrap() {
  * @returns {Object}
  */
 function apiGetQueueState() {
-  return apiQueueDialogBootstrap();
+  return buildQueueStateResponse_(loadQueue_());
+}
+
+/**
+ * Только для плавающего окна (ставит ping — окно реально загрузилось).
+ *
+ * @returns {Object}
+ */
+function apiQueueDialogBootstrap() {
+  markQueueDialogPing_();
+  var data = loadQueue_();
+  if (!data.sheetsCache || !data.sheetsCache.length) {
+    try {
+      data.sheetsCache = listKbSheetNames_();
+      saveQueue_(data);
+    } catch (e) {
+      data.sheetsCache = [];
+    }
+  }
+  return buildQueueStateResponse_(data);
 }
 
 /**
