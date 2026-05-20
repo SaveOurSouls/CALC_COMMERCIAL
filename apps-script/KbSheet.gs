@@ -86,6 +86,11 @@ function fillRowFromDb_(sheet, row, op) {
     return;
   }
 
+  if (!shouldUseKbScratchRow_(sheet)) {
+    pullDbFieldsToKbRow_(sheet, row, op);
+    return;
+  }
+
   var colMap = resolveKbColumns_(sheet);
   var dbHeaderMap = getDbHeaderMap_();
   var kbHeaderMap = getKbHeaderMap_(sheet);

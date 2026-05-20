@@ -127,11 +127,50 @@ function insertKbTableRows_(sheet, count) {
     beforeRow = bounds.firstDataRow;
   }
 
-  // В структурированной таблице insertRowsBefore(..., N) иногда вставляет не все N строк.
-  for (var i = 0; i < count; i++) {
-    sheet.insertRowsBefore(beforeRow, 1);
+  if (count <= 0) {
+    return beforeRow;
+  }
+
+  // Одна вставка: цикл insertRowsBefore(…,1) в таблице давал лишние пустые строки.
+  try {
+    sheet.insertRowsBefore(beforeRow, count);
+  } catch (e) {
+    for (var i = 0; i < count; i++) {
+      sheet.insertRowsBefore(beforeRow, 1);
+    }
   }
   return beforeRow;
+}
+
+/**
+ * Scratch-строка под таблицей расширяет структурированную таблицу — не используем.
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @returns {boolean}
+ */
+function shouldUseKbScratchRow_(sheet) {
+  if (getKbTable_(sheet)) {
+    return false;
+  }
+  if (CONFIG.kbInsertOnlyFiveColumns) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {number} row
+ * @param {Object} colMap
+ * @returns {boolean}
+ */
+function isKbDataRowEmpty_(sheet, row, colMap) {
+  var sketch = String(sheet.getRange(row, colMap.sketch).getDisplayValue() || '').trim();
+  var number = String(sheet.getRange(row, colMap.number).getDisplayValue() || '').trim();
+  var n = sheet.getRange(row, colMap.n).getValue();
+  var l = sheet.getRange(row, colMap.l).getValue();
+  var op = colMap.op ? String(sheet.getRange(row, colMap.op).getDisplayValue() || '').trim() : '';
+  return !sketch && !number && (n === '' || n === null) && (l === '' || l === null) && !op;
 }
 
 /**
@@ -235,12 +274,70 @@ function copyKbRowValues_(sheet, fromRow, toRow, colMap) {
 }
 
 /**
+ * Прямая запись в строку таблицы (без scratch — иначе таблица растёт вниз пустыми строками).
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {number} targetRow
+ * @param {Object} colMap
+ * @param {Object} data
+ */
+function writeKbRowValuesDirect_(sheet, targetRow, colMap, data) {
+  safeSetCellValue_(sheet, targetRow, colMap.sketch, data.sketch);
+  safeSetCellValue_(sheet, targetRow, colMap.number, data.number);
+  safeSetCellValue_(sheet, targetRow, colMap.n, data.n);
+  safeSetCellValue_(sheet, targetRow, colMap.l, data.l);
+  if (colMap.op && data.op !== undefined && data.op !== '') {
+    safeSetCellValue_(sheet, targetRow, colMap.op, data.op);
+  }
+
+  if (!CONFIG.kbInsertOnlyFiveColumns && data.dbOp) {
+    pullDbFieldsToKbRow_(sheet, targetRow, data.dbOp);
+  }
+}
+
+/**
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {number} targetRow
+ * @param {Object} dbOp
+ */
+function pullDbFieldsToKbRow_(sheet, targetRow, dbOp) {
+  var dbHeaderMap = getDbHeaderMap_();
+  var kbHeaderMap = getKbHeaderMap_(sheet);
+  var dbSheet = getDbSheet_();
+  var dbRow = dbOp.rowIndex;
+
+  Object.keys(CONFIG.kbDbPull).forEach(function (kbHeader) {
+    var dbTitle = CONFIG.kbDbPull[kbHeader];
+    var kbCol = kbHeaderMap[kbHeader];
+    var dbCol = dbHeaderMap[dbTitle];
+    if (kbCol && dbCol) {
+      safeSetCellValue_(sheet, targetRow, kbCol, dbSheet.getRange(dbRow, dbCol).getValue());
+    }
+  });
+
+  if (!shouldSkipCalculatedWrites_(sheet)) {
+    Object.keys(kbHeaderMap).forEach(function (title) {
+      var dbCol = dbHeaderMap[title];
+      if (dbCol && kbHeaderMap[title]) {
+        safeSetCellValue_(sheet, targetRow, kbHeaderMap[title],
+          dbSheet.getRange(dbRow, dbCol).getValue());
+      }
+    });
+  }
+}
+
+/**
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  * @param {number} targetRow
  * @param {Object} colMap
  * @param {Object} data {sketch, number, n, l, op, dbOp}
  */
 function writeKbRowData_(sheet, targetRow, colMap, data) {
+  if (!shouldUseKbScratchRow_(sheet)) {
+    writeKbRowValuesDirect_(sheet, targetRow, colMap, data);
+    return;
+  }
+
   var scratch = getKbScratchRow_(sheet);
 
   safeSetCellValue_(sheet, scratch, colMap.sketch, data.sketch);
@@ -251,32 +348,8 @@ function writeKbRowData_(sheet, targetRow, colMap, data) {
     safeSetCellValue_(sheet, scratch, colMap.op, data.op);
   }
 
-  /* Подтягивание из БД.ОП (кол. 6, 7 и пр.) — отключено, пока kbInsertOnlyFiveColumns */
   if (!CONFIG.kbInsertOnlyFiveColumns && data.dbOp) {
-    var dbOp = data.dbOp;
-    var dbHeaderMap = getDbHeaderMap_();
-    var kbHeaderMap = getKbHeaderMap_(sheet);
-    var dbSheet = getDbSheet_();
-    var dbRow = dbOp.rowIndex;
-
-    Object.keys(CONFIG.kbDbPull).forEach(function (kbHeader) {
-      var dbTitle = CONFIG.kbDbPull[kbHeader];
-      var kbCol = kbHeaderMap[kbHeader];
-      var dbCol = dbHeaderMap[dbTitle];
-      if (kbCol && dbCol) {
-        safeSetCellValue_(sheet, scratch, kbCol, dbSheet.getRange(dbRow, dbCol).getValue());
-      }
-    });
-
-    if (!shouldSkipCalculatedWrites_(sheet)) {
-      Object.keys(kbHeaderMap).forEach(function (title) {
-        var dbCol = dbHeaderMap[title];
-        if (dbCol && kbHeaderMap[title]) {
-          safeSetCellValue_(sheet, scratch, kbHeaderMap[title],
-            dbSheet.getRange(dbRow, dbCol).getValue());
-        }
-      });
-    }
+    pullDbFieldsToKbRow_(sheet, scratch, data.dbOp);
   }
 
   copyKbRowValues_(sheet, scratch, targetRow, colMap);
