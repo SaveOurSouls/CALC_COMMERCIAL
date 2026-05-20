@@ -145,6 +145,9 @@ function buildPriceFormulaTemplate_(cols) {
  * @param {Object} colMap
  */
 function recalcKbRow_(sheet, row, colMap) {
+  if (!CONFIG.kbEnableScriptRecalc) {
+    return;
+  }
   var sketch = String(sheet.getRange(row, colMap.sketch).getValue() || '').trim();
   var number = String(sheet.getRange(row, colMap.number).getValue() || '').trim();
   if (!sketch || !number) {
@@ -175,6 +178,13 @@ function recalcKbRow_(sheet, row, colMap) {
  * Пересчитать все заполненные строки на активном листе КБ.
  */
 function recalcActiveKbSheet() {
+  if (!CONFIG.kbEnableScriptRecalc) {
+    SpreadsheetApp.getUi().alert(
+      'Скриптовый пересчёт временно отключён (Config.kbEnableScriptRecalc = false).\n' +
+        'Используйте формулы в таблице КБ.'
+    );
+    return;
+  }
   var sheet = SpreadsheetApp.getActiveSheet();
   if (!isKbSheet_(sheet.getName())) {
     SpreadsheetApp.getUi().alert('Откройте лист кабельной книги (КБ1, КБ2, …).');

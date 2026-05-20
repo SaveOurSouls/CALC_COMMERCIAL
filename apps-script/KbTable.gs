@@ -242,7 +242,6 @@ function copyKbRowValues_(sheet, fromRow, toRow, colMap) {
  */
 function writeKbRowData_(sheet, targetRow, colMap, data) {
   var scratch = getKbScratchRow_(sheet);
-  var dbOp = data.dbOp;
 
   safeSetCellValue_(sheet, scratch, colMap.sketch, data.sketch);
   safeSetCellValue_(sheet, scratch, colMap.number, data.number);
@@ -252,7 +251,9 @@ function writeKbRowData_(sheet, targetRow, colMap, data) {
     safeSetCellValue_(sheet, scratch, colMap.op, data.op);
   }
 
-  if (dbOp) {
+  /* Подтягивание из БД.ОП (кол. 6, 7 и пр.) — отключено, пока kbInsertOnlyFiveColumns */
+  if (!CONFIG.kbInsertOnlyFiveColumns && data.dbOp) {
+    var dbOp = data.dbOp;
     var dbHeaderMap = getDbHeaderMap_();
     var kbHeaderMap = getKbHeaderMap_(sheet);
     var dbSheet = getDbSheet_();
@@ -306,9 +307,11 @@ function getKbWritableColumnIndexes_(colMap) {
   var cols = [
     colMap.sketch, colMap.number, colMap.n, colMap.l, colMap.op
   ];
-  Object.keys(colMap.pullCols || {}).forEach(function (k) {
-    cols.push(colMap.pullCols[k]);
-  });
+  if (!CONFIG.kbInsertOnlyFiveColumns) {
+    Object.keys(colMap.pullCols || {}).forEach(function (k) {
+      cols.push(colMap.pullCols[k]);
+    });
+  }
 
   var skipCalc = [
     colMap.timeTotal, colMap.timeMachineTotal, colMap.price, colMap.opType

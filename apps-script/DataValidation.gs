@@ -36,30 +36,35 @@ function onEditKbHandler_(e) {
   var col = e.range.getColumn();
   if (col === colMap.sketch) {
     applyNumberValidationForRow_(sheet, row, colMap);
-    var sketchVal = String(e.value || sheet.getRange(row, colMap.sketch).getValue() || '').trim();
-    var number = String(sheet.getRange(row, colMap.number).getValue() || '').trim();
-    if (sketchVal && number) {
-      var op = findOperation_(sketchVal, number);
-      if (op) {
-        fillRowFromDb_(sheet, row, op);
+    /* Подтягивание из БД.ОП и пересчёт — отключены, пока kbInsertOnlyFiveColumns */
+    if (!CONFIG.kbInsertOnlyFiveColumns && CONFIG.kbEnableScriptRecalc) {
+      var sketchVal = String(e.value || sheet.getRange(row, colMap.sketch).getValue() || '').trim();
+      var number = String(sheet.getRange(row, colMap.number).getValue() || '').trim();
+      if (sketchVal && number) {
+        var op = findOperation_(sketchVal, number);
+        if (op) {
+          fillRowFromDb_(sheet, row, op);
+        }
+        recalcKbRow_(sheet, row, colMap);
+      }
+    }
+  }
+
+  if (col === colMap.number) {
+    if (!CONFIG.kbInsertOnlyFiveColumns && CONFIG.kbEnableScriptRecalc) {
+      var sketchForNum = String(sheet.getRange(row, colMap.sketch).getValue() || '').trim();
+      var numVal = String(e.value || sheet.getRange(row, colMap.number).getValue() || '').trim();
+      if (sketchForNum && numVal) {
+        var opNum = findOperation_(sketchForNum, numVal);
+        if (opNum) {
+          fillRowFromDb_(sheet, row, opNum);
+        }
       }
       recalcKbRow_(sheet, row, colMap);
     }
   }
 
-  if (col === colMap.number) {
-    var sketchForNum = String(sheet.getRange(row, colMap.sketch).getValue() || '').trim();
-    var numVal = String(e.value || sheet.getRange(row, colMap.number).getValue() || '').trim();
-    if (sketchForNum && numVal) {
-      var opNum = findOperation_(sketchForNum, numVal);
-      if (opNum) {
-        fillRowFromDb_(sheet, row, opNum);
-      }
-    }
-    recalcKbRow_(sheet, row, colMap);
-  }
-
-  if (col === colMap.n || col === colMap.l) {
+  if ((col === colMap.n || col === colMap.l) && CONFIG.kbEnableScriptRecalc) {
     recalcKbRow_(sheet, row, colMap);
   }
 }

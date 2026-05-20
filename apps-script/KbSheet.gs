@@ -158,7 +158,7 @@ function insertKbRows_(payload) {
   }
 
   var dbOp = findOperation_(sketch, number);
-  if (!dbOp) {
+  if (!CONFIG.kbInsertOnlyFiveColumns && !dbOp) {
     throw new Error('Операция не найдена в БД.ОП: «' + sketch + '» / «' + number + '».');
   }
 
@@ -192,7 +192,9 @@ function insertKbRows_(payload) {
     } catch (eVal) {
       console.warn(eVal.message);
     }
-    recalcKbRow_(sheet, inserted[r], colMap);
+    if (CONFIG.kbEnableScriptRecalc) {
+      recalcKbRow_(sheet, inserted[r], colMap);
+    }
   }
 
   return {
@@ -239,7 +241,9 @@ function duplicateLastKbRow_(sheetName, count) {
     } catch (eVal) {
       console.warn(eVal.message);
     }
-    recalcKbRow_(sheet, rows[j], colMap);
+    if (CONFIG.kbEnableScriptRecalc) {
+      recalcKbRow_(sheet, rows[j], colMap);
+    }
   }
 
   return {
@@ -277,14 +281,12 @@ function insertKbQueue_(payload) {
   var count = rows.length;
   var startRow = insertKbTableRows_(sheet, count);
   var inserted = [];
-  var skipRecalc = shouldSkipCalculatedWrites_(sheet);
-
   for (var i = 0; i < count; i++) {
     var item = rows[i];
     var sketch = String(item.sketch || '').trim();
     var number = String(item.number || '').trim();
     var dbOp = findOperation_(sketch, number);
-    if (!dbOp) {
+    if (!CONFIG.kbInsertOnlyFiveColumns && !dbOp) {
       throw new Error('Операция не найдена (позиция ' + (i + 1) + '): «' + sketch + '» / «' + number + '».');
     }
 
@@ -299,7 +301,8 @@ function insertKbQueue_(payload) {
     });
     inserted.push(row);
 
-    if (!skipRecalc) {
+    /* Пересчёт 8, 9, Цена — отключён (kbEnableScriptRecalc) */
+    if (CONFIG.kbEnableScriptRecalc && !shouldSkipCalculatedWrites_(sheet)) {
       recalcKbRow_(sheet, row, colMap);
     }
   }
@@ -311,6 +314,6 @@ function insertKbQueue_(payload) {
     sheetName: sheetName,
     count: count,
     startRow: startRow,
-    hint: 'Вставлено ' + count + ' строк одним блоком (с ' + startRow + ').'
+    hint: 'Вставлено ' + count + ' строк (Эскиз, Номер, N, L, OP) с ' + startRow + '.'
   };
 }

@@ -8,6 +8,7 @@ function onOpen() {
   ui.createMenu('Техкарта КБ')
     .addItem('Справочник (боковая панель)', 'showKbSidebar')
     .addItem('Очередь операций (плавающее окно)', 'showKbQueueDialog')
+    .addItem('Сохранить активный лист в шаблон КБ', 'addActiveSheetToKbTemplate')
     .addItem('Пересчитать время и цену (активный лист)', 'recalcActiveKbSheet')
     .addItem('Миграция: убрать TL_КБ (валидация FILTER)', 'migrateKbSheetValidations')
     .addItem('Диагностика заголовков БД.ОП', 'showDbHeaderDiagnostics')
@@ -150,6 +151,15 @@ function apiUpdateRowDimensions(sheetName, row, n, l) {
   var colMap = resolveKbColumns_(sheet);
   sheet.getRange(row, colMap.n).setValue(n);
   sheet.getRange(row, colMap.l).setValue(l);
-  recalcKbRow_(sheet, row, colMap);
+  if (CONFIG.kbEnableScriptRecalc) {
+    recalcKbRow_(sheet, row, colMap);
+  }
   return { ok: true };
+}
+
+/**
+ * Копирует текущий открытый лист в архив шаблонов (КБ.ШАБЛ.N), формулы сохраняются.
+ */
+function apiAddActiveSheetToKbTemplate() {
+  return addActiveSheetToKbTemplate_();
 }

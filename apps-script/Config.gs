@@ -21,6 +21,17 @@ var CONFIG = {
    */
   kbSkipWriteCalculatedInTable: true,
 
+  /**
+   * Вставка только: Эскиз, Номер, N, L, OP (без подтягивания из БД.ОП и без пересчёта).
+   */
+  kbInsertOnlyFiveColumns: true,
+
+  /** Скриптовый пересчёт кол. 8, 9, Цена (временно выключен). */
+  kbEnableScriptRecalc: false,
+
+  /** Префикс листов-шаблонов КБ (КБ.ШАБЛ.1, КБ.ШАБЛ.2, …). */
+  kbTemplatePrefix: 'КБ.ШАБЛ.',
+
   /** Сколько верхних строк сканировать для поиска заголовков БД.ОП */
   dbHeaderScanMaxRow: 15,
 

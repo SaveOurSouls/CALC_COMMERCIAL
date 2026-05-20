@@ -52,7 +52,7 @@
   <div id="loadingOverlay">Загрузка очереди…</div>
 
   <h2>Очередь операций</h2>
-  <p class="hint">Эскиз и Номер — ввод с подсказками как в справочнике. N/L/OP — в строке. Выделите строку в КБ → «Вставить всё».</p>
+  <p class="hint">Вставка: только Эскиз, Номер, N, L, OP (без пересчёта). «+ Добавить лист» — копия активного листа в шаблон КБ.ШАБЛ.N с формулами.</p>
 
   <div class="top">
     <span>Вставить в лист:</span>
@@ -63,6 +63,7 @@
 
   <div class="toolbar">
     <button type="button" class="primary" id="btnInsertAll">Вставить всё в лист</button>
+    <button type="button" class="secondary" id="btnAddSheet">+ Добавить лист</button>
     <button type="button" class="danger" id="btnClear">Очистить очередь</button>
   </div>
 
@@ -423,7 +424,23 @@
     }
 
     document.getElementById('sheet').onchange = scheduleSave_;
+    function addSheetTemplate() {
+      setStatus('Копирование листа в шаблон…');
+      document.getElementById('btnAddSheet').disabled = true;
+      google.script.run
+        .withSuccessHandler(function (res) {
+          document.getElementById('btnAddSheet').disabled = false;
+          setStatus(res.hint || ('Создан «' + res.sheetName + '»'));
+        })
+        .withFailureHandler(function (e) {
+          document.getElementById('btnAddSheet').disabled = false;
+          setStatus(e.message, true);
+        })
+        .apiAddActiveSheetToKbTemplate();
+    }
+
     document.getElementById('btnInsertAll').onclick = insertAll;
+    document.getElementById('btnAddSheet').onclick = addSheetTemplate;
     document.getElementById('btnRefresh').onclick = function () {
       document.getElementById('loadingOverlay').style.display = 'flex';
       bootstrap();
