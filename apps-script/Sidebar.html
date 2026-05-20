@@ -50,7 +50,7 @@
 
   <button class="primary" id="btnInsert">Вставить операцию</button>
   <button class="secondary" id="btnDup">Скопировать последнюю строку</button>
-  <p class="hint">Для нарезки проводов: вставьте операцию, измените L/N и нажмите «Скопировать последнюю строку» или снова «Вставить» с тем же номером.</p>
+  <p class="hint">Выделите строку в таблице — новые строки встанут <strong>на её место</strong> (старая сдвинется вниз). «Копировать» берёт данные с <strong>выделенной</strong> строки. При количестве &gt; 1 все строки — копии первой вставленной.</p>
 
   <div id="status"></div>
 
@@ -170,7 +170,9 @@
       setStatus('Копирование…');
       google.script.run
         .withSuccessHandler(function (res) {
-          setStatus('Скопировано строк: ' + res.rows.length);
+          var msg = 'Скопировано строк: ' + res.rows.length;
+          if (res.hint) msg += '. ' + res.hint;
+          setStatus(msg);
         })
         .withFailureHandler(function (e) { setStatus(e.message, true); })
         .apiDuplicateLast(sheetName, count);

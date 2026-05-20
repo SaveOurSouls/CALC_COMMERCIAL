@@ -75,6 +75,8 @@ function listKbSheetNames_() {
 }
 
 /**
+ * Подтянуть из БД.ОП поля 6, 7 и совпадающие заголовки (без эскиза/номера).
+ *
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  * @param {number} row
  * @param {Object} op
@@ -84,48 +86,56 @@ function fillRowFromDb_(sheet, row, op) {
     return;
   }
 
+  var colMap = resolveKbColumns_(sheet);
   var dbHeaderMap = getDbHeaderMap_();
   var kbHeaderMap = getKbHeaderMap_(sheet);
   var dbSheet = getDbSheet_();
   var dbRow = op.rowIndex;
-  var skipCalc = shouldSkipCalculatedWrites_(sheet);
+  var scratch = getKbScratchRow_(sheet);
 
   Object.keys(CONFIG.kbDbPull).forEach(function (kbHeader) {
     var dbTitle = CONFIG.kbDbPull[kbHeader];
     var kbCol = kbHeaderMap[kbHeader];
     var dbCol = dbHeaderMap[dbTitle];
     if (kbCol && dbCol) {
-      safeSetCellValue_(sheet, row, kbCol, dbSheet.getRange(dbRow, dbCol).getValue());
+      safeSetCellValue_(sheet, scratch, kbCol, dbSheet.getRange(dbRow, dbCol).getValue());
+      try {
+        copyCellValue_(sheet, scratch, row, kbCol);
+      } catch (e) {
+        safeSetCellValue_(sheet, row, kbCol, sheet.getRange(scratch, kbCol).getValue());
+      }
     }
   });
 
-  var skip = {};
-  skip[CONFIG.kb.sketch] = true;
-  skip[CONFIG.kb.number] = true;
-  skip[CONFIG.kb.n] = true;
-  skip[CONFIG.kb.l] = true;
-  skip[CONFIG.kb.op] = true;
-  skip[CONFIG.kb.timeTotal] = true;
-  skip[CONFIG.kb.timeMachineTotal] = true;
-  skip[CONFIG.kb.price] = true;
-  skip[CONFIG.kb.opType] = true;
-  Object.keys(CONFIG.kbDbPull).forEach(function (h) {
-    skip[h] = true;
-  });
+  if (!shouldSkipCalculatedWrites_(sheet)) {
+    var skip = {};
+    skip[CONFIG.kb.sketch] = true;
+    skip[CONFIG.kb.number] = true;
+    skip[CONFIG.kb.n] = true;
+    skip[CONFIG.kb.l] = true;
+    skip[CONFIG.kb.op] = true;
+    Object.keys(CONFIG.kbDbPull).forEach(function (h) {
+      skip[h] = true;
+    });
 
-  Object.keys(kbHeaderMap).forEach(function (title) {
-    if (skip[title]) {
-      return;
-    }
-    if (skipCalc) {
-      return;
-    }
-    var dbCol = dbHeaderMap[title];
-    if (dbCol) {
-      safeSetCellValue_(sheet, row, kbHeaderMap[title],
-        dbSheet.getRange(dbRow, dbCol).getValue());
-    }
-  });
+    Object.keys(kbHeaderMap).forEach(function (title) {
+      if (skip[title]) {
+        return;
+      }
+      var dbCol = dbHeaderMap[title];
+      if (dbCol) {
+        safeSetCellValue_(sheet, scratch, kbHeaderMap[title],
+          dbSheet.getRange(dbRow, dbCol).getValue());
+        try {
+          copyCellValue_(sheet, scratch, row, kbHeaderMap[title]);
+        } catch (e2) {
+          safeSetCellValue_(sheet, row, kbHeaderMap[title], sheet.getRange(scratch, kbCol).getValue());
+        }
+      }
+    });
+  }
+
+  colsClearScratch_(sheet, scratch, colMap);
 }
 
 /**
@@ -155,18 +165,20 @@ function insertKbRows_(payload) {
   var colMap = resolveKbColumns_(sheet);
   var startRow = insertKbTableRows_(sheet, count);
   var inserted = [];
-  var inTable = !!getKbTable_(sheet);
+  var rowData = {
+    sketch: sketch,
+    number: number,
+    n: n,
+    l: l,
+    op: opVal,
+    dbOp: dbOp
+  };
 
-  for (var i = 0; i < count; i++) {
+  writeKbRowData_(sheet, startRow, colMap, rowData);
+
+  for (var i = 1; i < count; i++) {
     var row = startRow + i;
-    safeSetCellValue_(sheet, row, colMap.sketch, sketch);
-    safeSetCellValue_(sheet, row, colMap.number, number);
-    safeSetCellValue_(sheet, row, colMap.n, n);
-    safeSetCellValue_(sheet, row, colMap.l, l);
-    if (colMap.op && opVal !== undefined && opVal !== '') {
-      safeSetCellValue_(sheet, row, colMap.op, opVal);
-    }
-    fillRowFromDb_(sheet, row, dbOp);
+    copyKbRowValues_(sheet, startRow, row, colMap);
     try {
       applyNumberValidationForRow_(sheet, row, colMap);
     } catch (eVal) {
@@ -176,13 +188,19 @@ function insertKbRows_(payload) {
     inserted.push(row);
   }
 
+  try {
+    applyNumberValidationForRow_(sheet, startRow, colMap);
+  } catch (eVal0) {
+    console.warn(eVal0.message);
+  }
+  recalcKbRow_(sheet, startRow, colMap);
+  inserted.unshift(startRow);
+
   return {
     rows: inserted,
     sheetName: sheetName,
-    inTable: inTable,
-    hint: inTable ?
-      'Строка добавлена в таблицу (после выделенной или последней заполненной).' :
-      ''
+    inTable: !!getKbTable_(sheet),
+    hint: 'Вставлено ' + count + ' строк на место выделенной (строка ' + startRow + ').'
   };
 }
 
@@ -195,27 +213,19 @@ function duplicateLastKbRow_(sheetName, count) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
   var colMap = resolveKbColumns_(sheet);
   var bounds = getKbDataBounds_(sheet);
-  var sourceRow = bounds.lastDataRow;
+  var sourceRow = getKbSourceRowForCopy_(sheet);
 
   if (sourceRow < bounds.firstDataRow) {
-    throw new Error('Нет строк для копирования.');
+    throw new Error('Нет строк для копирования. Выделите строку в таблице или заполните хотя бы одну.');
   }
 
   count = Math.max(1, count || 1);
-  var writableCols = getKbWritableColumnIndexes_(colMap);
-  var copied = {};
-  writableCols.forEach(function (c) {
-    copied[c] = sheet.getRange(sourceRow, c).getValue();
-  });
-
   var startRow = insertKbTableRows_(sheet, count);
   var rows = [];
 
   for (var i = 0; i < count; i++) {
     var row = startRow + i;
-    writableCols.forEach(function (c) {
-      safeSetCellValue_(sheet, row, c, copied[c]);
-    });
+    copyKbRowValues_(sheet, sourceRow, row, colMap);
     try {
       applyNumberValidationForRow_(sheet, row, colMap);
     } catch (eVal) {
@@ -225,5 +235,10 @@ function duplicateLastKbRow_(sheetName, count) {
     rows.push(row);
   }
 
-  return { rows: rows, sheetName: sheetName, sourceRow: sourceRow };
+  return {
+    rows: rows,
+    sheetName: sheetName,
+    sourceRow: sourceRow,
+    hint: 'Скопировано ' + count + ' строк с строки ' + sourceRow + ' на позицию ' + startRow + '.'
+  };
 }

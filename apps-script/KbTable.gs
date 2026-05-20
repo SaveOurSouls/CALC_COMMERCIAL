@@ -1,6 +1,5 @@
 /**
  * Вставка строк в структурированную таблицу Google Sheets.
- * Колонки с типом «формула» / «выпадающий список таблицы» нельзя перезаписывать скриптом.
  */
 
 /**
@@ -66,8 +65,8 @@ function findLastKbDataRow_(sheet, fromRow, toRow) {
   }
 
   for (var r = toRow; r >= fromRow; r--) {
-    var sketch = String(sheet.getRange(r, colMap.sketch).getValue() || '').trim();
-    var number = String(sheet.getRange(r, colMap.number).getValue() || '').trim();
+    var sketch = String(sheet.getRange(r, colMap.sketch).getDisplayValue() || '').trim();
+    var number = String(sheet.getRange(r, colMap.number).getDisplayValue() || '').trim();
     var n = sheet.getRange(r, colMap.n).getValue();
     var l = sheet.getRange(r, colMap.l).getValue();
     if (sketch || number || n !== '' || l !== '') {
@@ -78,12 +77,30 @@ function findLastKbDataRow_(sheet, fromRow, toRow) {
 }
 
 /**
- * Строка, после которой вставлять (учёт выделения в таблице).
+ * Строка-источник для «копировать» (выделенная или последняя заполненная).
  *
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  * @returns {number}
  */
-function getKbInsertAfterRow_(sheet) {
+function getKbSourceRowForCopy_(sheet) {
+  var bounds = getKbDataBounds_(sheet);
+  var active = sheet.getActiveRange();
+  if (active) {
+    var ar = active.getRow();
+    if (ar >= bounds.firstDataRow && ar <= bounds.lastDataRow) {
+      return ar;
+    }
+  }
+  return bounds.lastDataRow;
+}
+
+/**
+ * Строка, на которую вставлять (выделенная сдвигается вниз).
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @returns {number}
+ */
+function getKbInsertBeforeRow_(sheet) {
   var bounds = getKbDataBounds_(sheet);
   var active = sheet.getActiveRange();
   if (active) {
@@ -92,7 +109,10 @@ function getKbInsertAfterRow_(sheet) {
       return ar;
     }
   }
-  return Math.max(bounds.lastDataRow, bounds.firstDataRow - 1);
+  if (bounds.lastDataRow < bounds.firstDataRow) {
+    return bounds.firstDataRow;
+  }
+  return bounds.lastDataRow + 1;
 }
 
 /**
@@ -101,14 +121,13 @@ function getKbInsertAfterRow_(sheet) {
  * @returns {number} первая вставленная строка
  */
 function insertKbTableRows_(sheet, count) {
+  var beforeRow = getKbInsertBeforeRow_(sheet);
   var bounds = getKbDataBounds_(sheet);
-  var afterRow = getKbInsertAfterRow_(sheet);
-  if (afterRow < bounds.firstDataRow - 1) {
-    afterRow = bounds.firstDataRow - 1;
+  if (beforeRow < bounds.firstDataRow) {
+    beforeRow = bounds.firstDataRow;
   }
-
-  sheet.insertRowsAfter(afterRow, count);
-  return afterRow + 1;
+  sheet.insertRowsBefore(beforeRow, count);
+  return beforeRow;
 }
 
 /**
@@ -120,6 +139,20 @@ function shouldSkipCalculatedWrites_(sheet) {
     return false;
   }
   return !!getKbTable_(sheet);
+}
+
+/**
+ * Строка вне таблицы для записи значений с последующим copyTo.
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @returns {number}
+ */
+function getKbScratchRow_(sheet) {
+  var table = getKbTable_(sheet);
+  if (table) {
+    return table.getRange().getLastRow() + 2;
+  }
+  return sheet.getLastRow() + 2;
 }
 
 /**
@@ -137,14 +170,107 @@ function safeSetCellValue_(sheet, row, col, value) {
     sheet.getRange(row, col).setValue(value);
     return true;
   } catch (e) {
-    console.warn('Пропуск записи R' + row + 'C' + col + ': ' + e.message);
     return false;
   }
 }
 
 /**
- * Колонки, в которые скрипт может писать (ввод оператором + подтягивание из БД.ОП).
- *
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {number} fromRow
+ * @param {number} toRow
+ * @param {number} col
+ */
+function copyCellValue_(sheet, fromRow, toRow, col) {
+  sheet.getRange(fromRow, col).copyTo(
+    sheet.getRange(toRow, col),
+    SpreadsheetApp.CopyPasteType.PASTE_VALUES,
+    false
+  );
+}
+
+/**
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {number} fromRow
+ * @param {number} toRow
+ * @param {Object} colMap
+ */
+function copyKbRowValues_(sheet, fromRow, toRow, colMap) {
+  var cols = getKbWritableColumnIndexes_(colMap);
+  cols.forEach(function (c) {
+    try {
+      copyCellValue_(sheet, fromRow, toRow, c);
+    } catch (e) {
+      var v = sheet.getRange(fromRow, c).getValue();
+      safeSetCellValue_(sheet, toRow, c, v);
+    }
+  });
+}
+
+/**
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {number} targetRow
+ * @param {Object} colMap
+ * @param {Object} data {sketch, number, n, l, op, dbOp}
+ */
+function writeKbRowData_(sheet, targetRow, colMap, data) {
+  var scratch = getKbScratchRow_(sheet);
+  var dbOp = data.dbOp;
+
+  safeSetCellValue_(sheet, scratch, colMap.sketch, data.sketch);
+  safeSetCellValue_(sheet, scratch, colMap.number, data.number);
+  safeSetCellValue_(sheet, scratch, colMap.n, data.n);
+  safeSetCellValue_(sheet, scratch, colMap.l, data.l);
+  if (colMap.op && data.op !== undefined && data.op !== '') {
+    safeSetCellValue_(sheet, scratch, colMap.op, data.op);
+  }
+
+  if (dbOp) {
+    var dbHeaderMap = getDbHeaderMap_();
+    var kbHeaderMap = getKbHeaderMap_(sheet);
+    var dbSheet = getDbSheet_();
+    var dbRow = dbOp.rowIndex;
+
+    Object.keys(CONFIG.kbDbPull).forEach(function (kbHeader) {
+      var dbTitle = CONFIG.kbDbPull[kbHeader];
+      var kbCol = kbHeaderMap[kbHeader];
+      var dbCol = dbHeaderMap[dbTitle];
+      if (kbCol && dbCol) {
+        safeSetCellValue_(sheet, scratch, kbCol, dbSheet.getRange(dbRow, dbCol).getValue());
+      }
+    });
+
+    if (!shouldSkipCalculatedWrites_(sheet)) {
+      Object.keys(kbHeaderMap).forEach(function (title) {
+        var dbCol = dbHeaderMap[title];
+        if (dbCol && kbHeaderMap[title]) {
+          safeSetCellValue_(sheet, scratch, kbHeaderMap[title],
+            dbSheet.getRange(dbRow, dbCol).getValue());
+        }
+      });
+    }
+  }
+
+  copyKbRowValues_(sheet, scratch, targetRow, colMap);
+
+  colsClearScratch_(sheet, scratch, colMap);
+}
+
+/**
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {number} scratch
+ * @param {Object} colMap
+ */
+function colsClearScratch_(sheet, scratch, colMap) {
+  getKbWritableColumnIndexes_(colMap).forEach(function (c) {
+    try {
+      sheet.getRange(scratch, c).clearContent();
+    } catch (e) {
+      // ignore
+    }
+  });
+}
+
+/**
  * @param {Object} colMap
  * @returns {number[]}
  */
