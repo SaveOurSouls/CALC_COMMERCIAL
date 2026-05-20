@@ -9,8 +9,10 @@
     label { display: block; margin: 8px 0 4px; font-weight: 600; }
     select, input, button { width: 100%; box-sizing: border-box; padding: 6px 8px; }
     button { margin-top: 8px; cursor: pointer; border-radius: 4px; }
+    button:disabled { opacity: .5; cursor: default; }
     button.primary { background: #1a73e8; color: #fff; border: none; }
     button.queue { background: #137333; color: #fff; border: none; font-weight: 600; }
+    button.queue:disabled { background: #81c995; color: #fff; }
     button.secondary { background: #f1f3f4; border: 1px solid #dadce0; color: #202124; }
     .row2 { display: grid; grid-template-columns: 1fr 1fr 64px; gap: 6px; }
     #ops { height: 120px; }
@@ -25,11 +27,11 @@
 </head>
 <body>
   <h2>Справочник</h2>
-  <p class="hint">Добавляйте операции в очередь. Список и порядок — в <strong>плавающем окне</strong> (удобно для 15–20 позиций).</p>
+  <p class="hint">Добавляйте операции в очередь — <strong>+ В очередь</strong> работает всегда. Список смотрите в плавающем окне.</p>
 
   <div class="badge" id="queueBadge">В очереди: 0</div>
 
-  <label>Лист КБ (для очереди)</label>
+  <label>Лист КБ</label>
   <select id="sheet"></select>
 
   <label>Эскиз проекта</label>
@@ -49,12 +51,12 @@
   <input type="text" id="op" placeholder="необязательно">
 
   <button class="primary" id="btnAdd">+ В очередь</button>
-  <button class="queue" id="btnOpenQueue">▣ Открыть очередь (плавающее окно)</button>
+  <button class="queue" id="btnOpenQueue">▣ Открыть очередь</button>
 
   <div id="status"></div>
 
   <script>
-    var state = { opsBySketch: {}, operations: [], queue: [], nextId: 1 };
+    var state = { opsBySketch: {}, operations: [] };
 
     function setStatus(msg, isErr) {
       var el = document.getElementById('status');
@@ -62,31 +64,22 @@
       el.className = isErr ? 'err' : '';
     }
 
+    function updateOpenQueueButton() {
+      google.script.run
+        .withSuccessHandler(function (r) {
+          var btn = document.getElementById('btnOpenQueue');
+          btn.disabled = !!r.open;
+          btn.textContent = r.open ? 'Очередь уже открыта' : '▣ Открыть очередь';
+        })
+        .apiIsQueueDialogOpen();
+    }
+
     function refreshBadge() {
       google.script.run
         .withSuccessHandler(function (data) {
           document.getElementById('queueBadge').textContent = 'В очереди: ' + (data.count || 0);
-          state.queue = data.queue || [];
-          state.nextId = data.nextId || 1;
-          if (data.sheetName) {
-            document.getElementById('sheet').value = data.sheetName;
-          }
         })
         .apiGetQueueState();
-    }
-
-    function saveQueue() {
-      google.script.run
-        .withSuccessHandler(function (res) {
-          document.getElementById('queueBadge').textContent = 'В очереди: ' + res.count;
-          setStatus('В очереди: ' + res.count);
-        })
-        .withFailureHandler(function (e) { setStatus(e.message, true); })
-        .apiSaveQueue({
-          queue: state.queue,
-          nextId: state.nextId,
-          sheetName: document.getElementById('sheet').value
-        });
     }
 
     function fillSelect(id, items, getVal, getLabel, ph) {
@@ -135,35 +128,31 @@
       var n = Number(document.getElementById('n').value);
       var l = Number(document.getElementById('l').value);
       var opText = document.getElementById('op').value;
+      var items = [];
+      for (var i = 0; i < times; i++) {
+        items.push({
+          sketch: sketch,
+          number: number,
+          label: op.label || number,
+          opType: op.opType || '',
+          n: n,
+          l: l,
+          op: opText
+        });
+      }
 
+      setStatus('Добавление…');
       google.script.run
-        .withSuccessHandler(function (data) {
-          state.queue = data.queue || [];
-          state.nextId = data.nextId || 1;
-          for (var i = 0; i < times; i++) {
-            state.queue.push({
-              id: state.nextId++,
-              sketch: sketch,
-              number: number,
-              label: op.label || number,
-              opType: op.opType || '',
-              n: n,
-              l: l,
-              op: opText
-            });
-          }
-          google.script.run
-            .withSuccessHandler(function (res) {
-              document.getElementById('queueBadge').textContent = 'В очереди: ' + res.count;
-              setStatus('Добавлено. В очереди: ' + res.count);
-            })
-            .apiSaveQueue({
-              queue: state.queue,
-              nextId: state.nextId,
-              sheetName: document.getElementById('sheet').value
-            });
+        .withSuccessHandler(function (res) {
+          document.getElementById('queueBadge').textContent = 'В очереди: ' + res.count;
+          setStatus('Добавлено. В очереди: ' + res.count);
+          updateOpenQueueButton();
         })
-        .apiGetQueueState();
+        .withFailureHandler(function (e) { setStatus(e.message, true); })
+        .apiAppendToQueue({
+          sheetName: document.getElementById('sheet').value,
+          items: items
+        });
     }
 
     function init() {
@@ -182,6 +171,7 @@
             loadOperations();
           }
           refreshBadge();
+          updateOpenQueueButton();
         })
         .withFailureHandler(function (e) { setStatus(e.message, true); })
         .apiGetInitialData();
@@ -189,21 +179,26 @@
 
     document.getElementById('sketch').onchange = loadOperations;
     document.getElementById('search').oninput = loadOperations;
-    document.getElementById('sheet').onchange = function () {
-      google.script.run.withSuccessHandler(refreshBadge).apiSaveQueue({
-        queue: state.queue, nextId: state.nextId, sheetName: document.getElementById('sheet').value
-      });
-    };
     document.getElementById('btnAdd').onclick = addToQueue;
     document.getElementById('btnOpenQueue').onclick = function () {
-      setStatus('Открываю окно…');
+      if (document.getElementById('btnOpenQueue').disabled) return;
+      setStatus('Открываю…');
       google.script.run
-        .withSuccessHandler(function () { setStatus('Окно очереди открыто'); })
+        .withSuccessHandler(function (res) {
+          if (res && res.alreadyOpen) {
+            setStatus('Окно уже открыто');
+          } else {
+            setStatus('Окно открыто');
+          }
+          updateOpenQueueButton();
+        })
         .withFailureHandler(function (e) { setStatus(e.message, true); })
         .showKbQueueDialog();
     };
 
     init();
+    setInterval(updateOpenQueueButton, 2500);
+    setInterval(refreshBadge, 5000);
   </script>
 </body>
 </html>
