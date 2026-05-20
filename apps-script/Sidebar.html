@@ -66,6 +66,7 @@
   <select id="semifinishedArticle"></select>
 
   <button class="semifinished" id="btnAddSemifinished">+ Полуфабрикат в очередь</button>
+  <button type="button" class="secondary" id="btnRefreshPresets">↻ Обновить список полуфабрикатов</button>
 
   <button class="queue" id="btnOpenQueue">▣ Открыть очередь</button>
 
@@ -96,6 +97,16 @@
           document.getElementById('queueBadge').textContent = 'В очереди: ' + (data.count || 0);
         })
         .apiGetQueueCount();
+    }
+
+    function refreshPresetsFromServer_() {
+      google.script.run
+        .withSuccessHandler(function (idx) {
+          state.presets = idx || { groups: [], byGroup: {} };
+          fillSemifinishedSelects_();
+        })
+        .withFailureHandler(function () { /* пресеты опциональны */ })
+        .apiGetSemifinishedPresetsIndex();
     }
 
     function fillSelect(id, items, getVal, getLabel, ph) {
@@ -244,6 +255,18 @@
     document.getElementById('semifinishedGroup').onchange = fillSemifinishedSelects_;
     document.getElementById('btnAdd').onclick = addToQueue;
     document.getElementById('btnAddSemifinished').onclick = addSemifinishedToQueue;
+    document.getElementById('btnRefreshPresets').onclick = function () {
+      setStatus('Обновление…');
+      google.script.run
+        .withSuccessHandler(function (idx) {
+          state.presets = idx || { groups: [], byGroup: {} };
+          fillSemifinishedSelects_();
+          var n = (idx && idx.groups) ? idx.groups.length : 0;
+          setStatus(n ? ('Загружено групп: ' + n) : 'Нет сохранённых наборов (сначала «Записать» в очереди)');
+        })
+        .withFailureHandler(function (e) { setStatus(e.message, true); })
+        .apiGetSemifinishedPresetsIndex();
+    };
     document.getElementById('btnOpenQueue').onclick = function () {
       if (document.getElementById('btnOpenQueue').disabled) return;
       setStatus('Открываю…');
@@ -263,6 +286,7 @@
     init();
     setInterval(updateOpenQueueButton, 4000);
     setInterval(refreshBadge, 8000);
+    setInterval(refreshPresetsFromServer_, 12000);
   </script>
 </body>
 </html>

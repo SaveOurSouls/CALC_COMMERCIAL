@@ -133,15 +133,26 @@
     }
 
     function flushSave_(cb) {
-      if (!state.dirty && !cb) return;
+      if (!state.dirty) {
+        if (cb) cb();
+        return;
+      }
       google.script.run
-        .withSuccessHandler(function (res) {
+        .withSuccessHandler(function () {
           state.dirty = false;
           updateCount_();
-          setStatus('');
-          if (cb) cb();
+          if (cb) {
+            cb();
+          } else {
+            setStatus('');
+          }
         })
-        .withFailureHandler(function (e) { setStatus(e.message, true); })
+        .withFailureHandler(function (e) {
+          setStatus(e.message, true);
+          if (cb) {
+            setStatus('Ошибка сохранения очереди: ' + e.message, true);
+          }
+        })
         .apiSaveQueue({
           queue: state.queue,
           nextId: state.nextId,
@@ -209,19 +220,28 @@
         setStatus('Очередь пуста — сначала соберите операции', true);
         return;
       }
-      flushSave_(function () {
+      var btn = document.getElementById('btnPresetSave');
+      btn.disabled = true;
+      setStatus('Сохранение набора…', false, true);
+
+      function runSavePreset_() {
         var items = state.queue.map(function (item) {
           return { sketch: item.sketch, number: item.number, n: item.n, l: item.l, op: item.op || '' };
         });
-        setStatus('Сохранение набора…');
         google.script.run
           .withSuccessHandler(function (res) {
+            btn.disabled = false;
             applyPresetsIndex_(res.presets);
             setStatus(res.hint || 'Сохранено');
           })
-          .withFailureHandler(function (e) { setStatus(e.message, true); })
+          .withFailureHandler(function (e) {
+            btn.disabled = false;
+            setStatus((e && e.message) ? e.message : String(e), true);
+          })
           .apiSaveSemifinishedPreset({ group: f.group, article: f.article, items: items });
-      });
+      }
+
+      flushSave_(runSavePreset_);
     }
 
     function loadPresetForEdit_() {

@@ -141,7 +141,8 @@ function saveSemifinishedPreset_(group, article, items) {
   });
 
   var startRow = sheet.getLastRow() + 1;
-  sheet.getRange(startRow, 1, startRow + rows.length - 1, PRESET_COL.updated).setValues(rows);
+  sheet.getRange(startRow, 1, rows.length, PRESET_COL.updated).setValues(rows);
+  SpreadsheetApp.flush();
 }
 
 /**
@@ -202,16 +203,26 @@ function apiGetSemifinishedPresetsIndex() {
  * @returns {Object}
  */
 function apiSaveSemifinishedPreset(payload) {
-  var group = payload.group;
-  var article = payload.article;
-  var items = payload.items || payload.queue || [];
-  saveSemifinishedPreset_(group, article, items);
-  return {
-    ok: true,
-    hint: 'Набор «' + normalizePresetKey_(group) + '» / «' + normalizePresetKey_(article) +
-      '» сохранён (' + items.length + ' оп.).',
-    presets: getSemifinishedPresetsIndex_()
-  };
+  try {
+    var group = payload.group;
+    var article = payload.article;
+    var items = payload.items || payload.queue || [];
+    saveSemifinishedPreset_(group, article, items);
+    var index = getSemifinishedPresetsIndex_();
+    SpreadsheetApp.getActiveSpreadsheet().toast(
+      'Сохранено ' + items.length + ' операций',
+      'КБ.ПРЕСЕТЫ',
+      4
+    );
+    return {
+      ok: true,
+      hint: 'Набор «' + normalizePresetKey_(group) + '» / «' + normalizePresetKey_(article) +
+        '» сохранён (' + items.length + ' оп.) на лист «' + (CONFIG.kbPresetsSheet || 'КБ.ПРЕСЕТЫ') + '».',
+      presets: index
+    };
+  } catch (err) {
+    throw new Error('Не удалось сохранить набор: ' + (err.message || err));
+  }
 }
 
 /**

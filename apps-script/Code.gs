@@ -49,11 +49,36 @@ function showKbQueueDialog() {
   if (isQueueDialogOpen_()) {
     return { alreadyOpen: true };
   }
+  if (!isAppsScriptHtmlFileValid_('QueueDialog')) {
+    SpreadsheetApp.getUi().alert(
+      'Ошибка: файл QueueDialog должен быть типа HTML, не .gs.\n\n' +
+        'В редакторе Apps Script: «+» → HTML → имя QueueDialog → вставьте QueueDialog.html из репозитория.\n' +
+        'Также нужны: SemifinishedPresets.gs, Sidebar.html.'
+    );
+    return { error: 'invalid_queue_dialog_html' };
+  }
   var html = HtmlService.createHtmlOutputFromFile('QueueDialog')
     .setWidth(920)
     .setHeight(1360);
   SpreadsheetApp.getUi().showModelessDialog(html, 'Очередь операций');
   return { alreadyOpen: false };
+}
+
+/**
+ * @param {string} name имя HTML-файла без расширения
+ * @returns {boolean}
+ */
+function isAppsScriptHtmlFileValid_(name) {
+  try {
+    var raw = HtmlService.createTemplateFromFile(name).getRawContent();
+    var s = String(raw || '').trim();
+    if (s.indexOf('function loadQueue_') >= 0 || s.indexOf('QUEUE_PROP_KEY') >= 0) {
+      return false;
+    }
+    return s.indexOf('<') === 0 || s.indexOf('<!') === 0;
+  } catch (e) {
+    return false;
+  }
 }
 
 function showFormulaHelp() {
