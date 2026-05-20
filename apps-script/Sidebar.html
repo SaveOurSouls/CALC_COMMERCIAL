@@ -118,7 +118,11 @@
     function fillSemifinishedSelects_() {
       var presets = state.presets || { groups: [], byGroup: {} };
       fillSelect('semifinishedGroup', presets.groups, function (g) { return g; }, function (g) { return g; }, 'Нет наборов');
-      var group = document.getElementById('semifinishedGroup').value;
+      var groupSel = document.getElementById('semifinishedGroup');
+      if (presets.groups && presets.groups.length && !groupSel.value) {
+        groupSel.selectedIndex = 0;
+      }
+      var group = groupSel.value;
       var articles = presets.byGroup[group] || [];
       fillSelect('semifinishedArticle', articles, function (a) { return a; }, function (a) { return a; }, '—');
     }
