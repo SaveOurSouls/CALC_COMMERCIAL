@@ -187,7 +187,17 @@ function apiUpdateRowDimensions(sheetName, row, n, l) {
 }
 
 /**
+ * Пункт меню: сохранить активный лист как шаблон КБ.ШАБЛ.N.
+ */
+function addActiveSheetToKbTemplate() {
+  var res = addActiveSheetToKbTemplate_();
+  SpreadsheetApp.getActiveSpreadsheet().toast(res.hint || 'Шаблон создан', 'КБ', 5);
+  return res;
+}
+
+/**
  * Копирует текущий открытый лист в архив шаблонов (КБ.ШАБЛ.N), формулы сохраняются.
+ * (вызов из HTML-диалога очереди)
  */
 function apiAddActiveSheetToKbTemplate() {
   return addActiveSheetToKbTemplate_();
