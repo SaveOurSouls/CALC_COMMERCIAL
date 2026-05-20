@@ -83,11 +83,19 @@ function applyNumberValidationForRow_(sheet, row, colMap) {
     return;
   }
 
-  var validation = SpreadsheetApp.newDataValidation()
-    .requireValueInList(numbers, true)
-    .setAllowInvalid(false)
-    .build();
-  numberCell.setDataValidation(validation);
+  if (getKbTable_(sheet)) {
+    return;
+  }
+
+  try {
+    var validation = SpreadsheetApp.newDataValidation()
+      .requireValueInList(numbers, true)
+      .setAllowInvalid(false)
+      .build();
+    numberCell.setDataValidation(validation);
+  } catch (e) {
+    console.warn('Проверка данных для «Номер» пропущена: ' + e.message);
+  }
 }
 
 /**

@@ -156,7 +156,9 @@
       setStatus('Вставка…');
       google.script.run
         .withSuccessHandler(function (res) {
-          setStatus('Добавлено строк: ' + res.rows.length + ' (' + res.sheetName + ')');
+          var msg = 'Добавлено строк: ' + res.rows.length + ' (' + res.sheetName + ')';
+          if (res.hint) msg += '. ' + res.hint;
+          setStatus(msg);
         })
         .withFailureHandler(function (e) { setStatus(e.message, true); })
         .apiInsertRows(payload);

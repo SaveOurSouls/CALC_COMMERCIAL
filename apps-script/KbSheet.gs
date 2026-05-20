@@ -75,15 +75,6 @@ function listKbSheetNames_() {
 }
 
 /**
- * @param {string} sheetName
- * @returns {number}
- */
-function getNextKbRow_(sheetName) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  return Math.max(sheet.getLastRow() + 1, CONFIG.kbDataStartRow);
-}
-
-/**
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  * @param {number} row
  * @param {Object} op
@@ -97,13 +88,14 @@ function fillRowFromDb_(sheet, row, op) {
   var kbHeaderMap = getKbHeaderMap_(sheet);
   var dbSheet = getDbSheet_();
   var dbRow = op.rowIndex;
+  var skipCalc = shouldSkipCalculatedWrites_(sheet);
 
   Object.keys(CONFIG.kbDbPull).forEach(function (kbHeader) {
     var dbTitle = CONFIG.kbDbPull[kbHeader];
     var kbCol = kbHeaderMap[kbHeader];
     var dbCol = dbHeaderMap[dbTitle];
     if (kbCol && dbCol) {
-      sheet.getRange(row, kbCol).setValue(dbSheet.getRange(dbRow, dbCol).getValue());
+      safeSetCellValue_(sheet, row, kbCol, dbSheet.getRange(dbRow, dbCol).getValue());
     }
   });
 
@@ -114,7 +106,9 @@ function fillRowFromDb_(sheet, row, op) {
   skip[CONFIG.kb.l] = true;
   skip[CONFIG.kb.op] = true;
   skip[CONFIG.kb.timeTotal] = true;
+  skip[CONFIG.kb.timeMachineTotal] = true;
   skip[CONFIG.kb.price] = true;
+  skip[CONFIG.kb.opType] = true;
   Object.keys(CONFIG.kbDbPull).forEach(function (h) {
     skip[h] = true;
   });
@@ -123,10 +117,13 @@ function fillRowFromDb_(sheet, row, op) {
     if (skip[title]) {
       return;
     }
+    if (skipCalc) {
+      return;
+    }
     var dbCol = dbHeaderMap[title];
     if (dbCol) {
-      sheet.getRange(row, kbHeaderMap[title])
-        .setValue(dbSheet.getRange(dbRow, dbCol).getValue());
+      safeSetCellValue_(sheet, row, kbHeaderMap[title],
+        dbSheet.getRange(dbRow, dbCol).getValue());
     }
   });
 }
@@ -156,25 +153,37 @@ function insertKbRows_(payload) {
   }
 
   var colMap = resolveKbColumns_(sheet);
-  var startRow = getNextKbRow_(sheetName);
+  var startRow = insertKbTableRows_(sheet, count);
   var inserted = [];
+  var inTable = !!getKbTable_(sheet);
 
   for (var i = 0; i < count; i++) {
     var row = startRow + i;
-    sheet.getRange(row, colMap.sketch).setValue(sketch);
-    sheet.getRange(row, colMap.number).setValue(number);
-    sheet.getRange(row, colMap.n).setValue(n);
-    sheet.getRange(row, colMap.l).setValue(l);
+    safeSetCellValue_(sheet, row, colMap.sketch, sketch);
+    safeSetCellValue_(sheet, row, colMap.number, number);
+    safeSetCellValue_(sheet, row, colMap.n, n);
+    safeSetCellValue_(sheet, row, colMap.l, l);
     if (colMap.op && opVal !== undefined && opVal !== '') {
-      sheet.getRange(row, colMap.op).setValue(opVal);
+      safeSetCellValue_(sheet, row, colMap.op, opVal);
     }
     fillRowFromDb_(sheet, row, dbOp);
-    applyNumberValidationForRow_(sheet, row, colMap);
+    try {
+      applyNumberValidationForRow_(sheet, row, colMap);
+    } catch (eVal) {
+      console.warn(eVal.message);
+    }
     recalcKbRow_(sheet, row, colMap);
     inserted.push(row);
   }
 
-  return { rows: inserted, sheetName: sheetName };
+  return {
+    rows: inserted,
+    sheetName: sheetName,
+    inTable: inTable,
+    hint: inTable ?
+      'Строка добавлена в таблицу (после выделенной или последней заполненной).' :
+      ''
+  };
 }
 
 /**
@@ -185,24 +194,36 @@ function insertKbRows_(payload) {
 function duplicateLastKbRow_(sheetName, count) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
   var colMap = resolveKbColumns_(sheet);
-  var lastRow = sheet.getLastRow();
-  if (lastRow < CONFIG.kbDataStartRow) {
+  var bounds = getKbDataBounds_(sheet);
+  var sourceRow = bounds.lastDataRow;
+
+  if (sourceRow < bounds.firstDataRow) {
     throw new Error('Нет строк для копирования.');
   }
 
-  var lastCol = sheet.getLastColumn();
-  var values = sheet.getRange(lastRow, 1, lastRow, lastCol).getValues()[0];
   count = Math.max(1, count || 1);
-  var start = getNextKbRow_(sheetName);
+  var writableCols = getKbWritableColumnIndexes_(colMap);
+  var copied = {};
+  writableCols.forEach(function (c) {
+    copied[c] = sheet.getRange(sourceRow, c).getValue();
+  });
+
+  var startRow = insertKbTableRows_(sheet, count);
   var rows = [];
 
   for (var i = 0; i < count; i++) {
-    var row = start + i;
-    sheet.getRange(row, 1, row, lastCol).setValues([values]);
-    applyNumberValidationForRow_(sheet, row, colMap);
+    var row = startRow + i;
+    writableCols.forEach(function (c) {
+      safeSetCellValue_(sheet, row, c, copied[c]);
+    });
+    try {
+      applyNumberValidationForRow_(sheet, row, colMap);
+    } catch (eVal) {
+      console.warn(eVal.message);
+    }
     recalcKbRow_(sheet, row, colMap);
     rows.push(row);
   }
 
-  return { rows: rows, sheetName: sheetName };
+  return { rows: rows, sheetName: sheetName, sourceRow: sourceRow };
 }

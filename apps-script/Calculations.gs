@@ -162,15 +162,13 @@ function recalcKbRow_(sheet, row, colMap) {
   var machineTime = calculateMachineTime_(op, n, l);
   var price = calculateOperationPrice_(op, time, n);
 
-  if (colMap.timeTotal) {
-    sheet.getRange(row, colMap.timeTotal).setValue(time);
+  if (shouldSkipCalculatedWrites_(sheet)) {
+    return;
   }
-  if (colMap.timeMachineTotal) {
-    sheet.getRange(row, colMap.timeMachineTotal).setValue(machineTime);
-  }
-  if (colMap.price) {
-    sheet.getRange(row, colMap.price).setValue(price);
-  }
+
+  safeSetCellValue_(sheet, row, colMap.timeTotal, time);
+  safeSetCellValue_(sheet, row, colMap.timeMachineTotal, machineTime);
+  safeSetCellValue_(sheet, row, colMap.price, price);
 }
 
 /**
