@@ -21,6 +21,9 @@
       padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; margin: 8px 0;
     }
     .hint { color: #5f6368; font-size: 11px; margin-top: 6px; line-height: 1.45; }
+    .section-title { font-size: 13px; margin: 14px 0 6px; font-weight: 600; color: #3c4043; }
+    hr.sep { border: none; border-top: 1px solid #dadce0; margin: 12px 0; }
+    button.semifinished { background: #e8710a; color: #fff; border: none; font-weight: 600; }
     #status { margin-top: 10px; font-size: 11px; color: #137333; min-height: 16px; }
     .err { color: #c5221f; }
   </style>
@@ -51,12 +54,25 @@
   <input type="text" id="op" placeholder="необязательно">
 
   <button class="primary" id="btnAdd">+ В очередь</button>
+
+  <hr class="sep">
+  <div class="section-title">Полуфабрикат</div>
+  <p class="hint">Готовый набор операций из окна «Очередь» (лист КБ.ПРЕСЕТЫ).</p>
+
+  <label>Тип полуфабриката</label>
+  <select id="semifinishedGroup"></select>
+
+  <label>Название полуфабриката</label>
+  <select id="semifinishedArticle"></select>
+
+  <button class="semifinished" id="btnAddSemifinished">+ Полуфабрикат в очередь</button>
+
   <button class="queue" id="btnOpenQueue">▣ Открыть очередь</button>
 
   <div id="status"></div>
 
   <script>
-    var state = { opsBySketch: {}, operations: [] };
+    var state = { opsBySketch: {}, operations: [], presets: { groups: [], byGroup: {} } };
 
     function setStatus(msg, isErr) {
       var el = document.getElementById('status');
@@ -97,6 +113,36 @@
         o.textContent = getLabel(item);
         sel.appendChild(o);
       });
+    }
+
+    function fillSemifinishedSelects_() {
+      var presets = state.presets || { groups: [], byGroup: {} };
+      fillSelect('semifinishedGroup', presets.groups, function (g) { return g; }, function (g) { return g; }, 'Нет наборов');
+      var group = document.getElementById('semifinishedGroup').value;
+      var articles = presets.byGroup[group] || [];
+      fillSelect('semifinishedArticle', articles, function (a) { return a; }, function (a) { return a; }, '—');
+    }
+
+    function addSemifinishedToQueue() {
+      var group = document.getElementById('semifinishedGroup').value;
+      var article = document.getElementById('semifinishedArticle').value;
+      if (!group || !article) {
+        setStatus('Выберите тип и название полуфабриката', true);
+        return;
+      }
+      setStatus('Загрузка набора…');
+      google.script.run
+        .withSuccessHandler(function (res) {
+          document.getElementById('queueBadge').textContent = 'В очереди: ' + res.count;
+          setStatus(res.hint || ('Добавлено ' + res.added));
+          updateOpenQueueButton();
+        })
+        .withFailureHandler(function (e) { setStatus(e.message, true); })
+        .apiAppendSemifinishedToQueue({
+          group: group,
+          article: article,
+          sheetName: document.getElementById('sheet').value
+        });
     }
 
     function loadOperations() {
@@ -163,7 +209,9 @@
             .withSuccessHandler(function (data) {
               setStatus('');
               state.opsBySketch = data.opsBySketch || {};
+              state.presets = data.presets || { groups: [], byGroup: {} };
               fillSelect('sheet', data.sheets, function (s) { return s; }, function (s) { return s; }, 'Нет КБ');
+              fillSemifinishedSelects_();
               fillSelect('sketch', data.sketches, function (s) { return s; }, function (s) { return s; }, 'Нет эскизов');
               if (data.activeSheet && data.sheets && data.sheets.indexOf(data.activeSheet) >= 0) {
                 document.getElementById('sheet').value = data.activeSheet;
@@ -189,7 +237,9 @@
 
     document.getElementById('sketch').onchange = loadOperations;
     document.getElementById('search').oninput = loadOperations;
+    document.getElementById('semifinishedGroup').onchange = fillSemifinishedSelects_;
     document.getElementById('btnAdd').onclick = addToQueue;
+    document.getElementById('btnAddSemifinished').onclick = addSemifinishedToQueue;
     document.getElementById('btnOpenQueue').onclick = function () {
       if (document.getElementById('btnOpenQueue').disabled) return;
       setStatus('Открываю…');

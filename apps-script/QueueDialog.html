@@ -18,7 +18,7 @@
     button.danger { background: #fff; border: 1px solid #dadce0; color: #c5221f; }
     button:disabled { opacity: .55; cursor: default; }
     .table-wrap {
-      height: calc(100vh - 140px); min-height: 720px; max-height: 1120px;
+      height: calc(100vh - 280px); min-height: 520px; max-height: 1000px;
       overflow: auto; border: 1px solid #dadce0; border-radius: 6px; background: #fff;
     }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -46,6 +46,15 @@
       position: fixed; inset: 0; background: rgba(255,255,255,.85);
       display: flex; align-items: center; justify-content: center; font-size: 14px; z-index: 9;
     }
+    .preset-box {
+      border: 1px solid #dadce0; border-radius: 6px; padding: 10px 12px; margin-bottom: 10px;
+      background: #f8f9fa;
+    }
+    .preset-box h3 { font-size: 13px; margin: 0 0 8px; color: #3c4043; }
+    .preset-box label { display: block; font-size: 11px; font-weight: 600; margin: 6px 0 3px; color: #5f6368; }
+    .preset-box input { width: 100%; padding: 6px 8px; border: 1px solid #dadce0; border-radius: 3px; font-size: 12px; }
+    .preset-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .preset-actions button { flex: 1; min-width: 120px; margin: 0; }
   </style>
 </head>
 <body>
@@ -60,6 +69,22 @@
     <span class="badge" id="queueCount">0 поз.</span>
     <button type="button" class="secondary" id="btnRefresh">↻ С сервера</button>
   </div>
+
+  <div class="preset-box">
+    <h3>Набор полуфабриката (долгое хранение в листе КБ.ПРЕСЕТЫ)</h3>
+    <label for="presetGroup">Тип / группа полуфабриката</label>
+    <input type="text" id="presetGroup" list="dlPresetGroups" placeholder="Например: Разъёмы">
+    <label for="presetArticle">Название артикула полуфабриката</label>
+    <input type="text" id="presetArticle" list="dlPresetArticles" placeholder="Точное название артикула">
+    <div class="preset-actions">
+      <button type="button" class="primary" id="btnPresetSave">Записать</button>
+      <button type="button" class="secondary" id="btnPresetLoad">Загрузить для правки</button>
+      <button type="button" class="danger" id="btnPresetDelete">Удалить набор</button>
+    </div>
+  </div>
+
+  <datalist id="dlPresetGroups"></datalist>
+  <datalist id="dlPresetArticles"></datalist>
 
   <div class="toolbar">
     <button type="button" class="primary" id="btnInsertAll">Вставить всё в лист</button>
@@ -86,6 +111,7 @@
   <script>
     var state = { queue: [], nextId: 1, dragId: null, dirty: false };
     var catalog = { sketches: [], opsBySketch: {} };
+    var presets = { groups: [], byGroup: {} };
     var saveTimer = null;
     var pingTimer = null;
 
@@ -140,6 +166,101 @@
     }
     function escAttr_(s) {
       return String(s || '').replace(/"/g, '&quot;');
+    }
+
+    function fillPresetDatalists_() {
+      var dlG = document.getElementById('dlPresetGroups');
+      var dlA = document.getElementById('dlPresetArticles');
+      dlG.innerHTML = '';
+      dlA.innerHTML = '';
+      (presets.groups || []).forEach(function (g) {
+        var o = document.createElement('option');
+        o.value = g;
+        dlG.appendChild(o);
+      });
+      var group = document.getElementById('presetGroup').value.trim();
+      var arts = presets.byGroup[group] || [];
+      arts.forEach(function (a) {
+        var o2 = document.createElement('option');
+        o2.value = a;
+        dlA.appendChild(o2);
+      });
+    }
+
+    function applyPresetsIndex_(data) {
+      presets = data || { groups: [], byGroup: {} };
+      fillPresetDatalists_();
+    }
+
+    function getPresetFields_() {
+      return {
+        group: document.getElementById('presetGroup').value.trim(),
+        article: document.getElementById('presetArticle').value.trim()
+      };
+    }
+
+    function savePreset_() {
+      var f = getPresetFields_();
+      if (!f.group || !f.article) {
+        setStatus('Укажите группу и артикул', true);
+        return;
+      }
+      if (!state.queue.length) {
+        setStatus('Очередь пуста — сначала соберите операции', true);
+        return;
+      }
+      flushSave_(function () {
+        var items = state.queue.map(function (item) {
+          return { sketch: item.sketch, number: item.number, n: item.n, l: item.l, op: item.op || '' };
+        });
+        setStatus('Сохранение набора…');
+        google.script.run
+          .withSuccessHandler(function (res) {
+            applyPresetsIndex_(res.presets);
+            setStatus(res.hint || 'Сохранено');
+          })
+          .withFailureHandler(function (e) { setStatus(e.message, true); })
+          .apiSaveSemifinishedPreset({ group: f.group, article: f.article, items: items });
+      });
+    }
+
+    function loadPresetForEdit_() {
+      var f = getPresetFields_();
+      if (!f.group || !f.article) {
+        setStatus('Укажите группу и артикул', true);
+        return;
+      }
+      setStatus('Загрузка набора…');
+      google.script.run
+        .withSuccessHandler(function (data) {
+          state.queue = data.queue || [];
+          state.nextId = data.nextId || 1;
+          state.dirty = false;
+          renderTable();
+          setStatus('Загружено ' + state.queue.length + ' операций для правки');
+        })
+        .withFailureHandler(function (e) { setStatus(e.message, true); })
+        .apiReplaceQueueWithSemifinished({
+          group: f.group,
+          article: f.article,
+          sheetName: document.getElementById('sheet').value
+        });
+    }
+
+    function deletePreset_() {
+      var f = getPresetFields_();
+      if (!f.group || !f.article) {
+        setStatus('Укажите группу и артикул', true);
+        return;
+      }
+      if (!confirm('Удалить набор «' + f.group + '» / «' + f.article + '»?')) return;
+      google.script.run
+        .withSuccessHandler(function (res) {
+          applyPresetsIndex_(res.presets);
+          setStatus(res.hint || 'Удалено');
+        })
+        .withFailureHandler(function (e) { setStatus(e.message, true); })
+        .apiDeleteSemifinishedPreset(f);
     }
 
     function fillSketchesDatalist_() {
@@ -380,6 +501,7 @@
           state.nextId = data.nextId || 1;
           catalog.sketches = data.sketches || [];
           catalog.opsBySketch = data.opsBySketch || {};
+          applyPresetsIndex_(data.presets);
           fillSketchesDatalist_();
           fillSheetSelect(data.sheets, data.sheetName);
           renderTable();
@@ -438,6 +560,12 @@
         })
         .apiAddActiveSheetToKbTemplate();
     }
+
+    document.getElementById('presetGroup').oninput = fillPresetDatalists_;
+    document.getElementById('presetGroup').onchange = fillPresetDatalists_;
+    document.getElementById('btnPresetSave').onclick = savePreset_;
+    document.getElementById('btnPresetLoad').onclick = loadPresetForEdit_;
+    document.getElementById('btnPresetDelete').onclick = deletePreset_;
 
     document.getElementById('btnInsertAll').onclick = insertAll;
     document.getElementById('btnAddSheet').onclick = addSheetTemplate;

@@ -89,10 +89,13 @@ function apiGetInitialData() {
     var sidebarIndex = getDbOpsSidebarIndex_();
     var queueCount = loadQueue_().queue.length;
 
+    var presets = getSemifinishedPresetsIndex_();
+
     return {
       sheets: sheets,
       sketches: sidebarIndex.sketches,
       opsBySketch: sidebarIndex.opsBySketch,
+      presets: presets,
       queueCount: queueCount,
       activeSheet: active,
       dbHeaderRow: info.headerRow,
@@ -102,6 +105,7 @@ function apiGetInitialData() {
     return {
       sheets: sheets,
       sketches: [],
+      presets: { groups: [], byGroup: {} },
       activeSheet: active,
       error: err.message,
       hint: 'Меню → Техкарта КБ → Диагностика заголовков БД.ОП'

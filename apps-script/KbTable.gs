@@ -131,6 +131,34 @@ function insertKbTableRows_(sheet, count) {
     return beforeRow;
   }
 
+  var table = getKbTable_(sheet);
+  if (table) {
+    try {
+      var colMap = resolveKbColumns_(sheet);
+      var tableLast = table.getRange().getLastRow();
+      if (isKbDataRowEmpty_(sheet, beforeRow, colMap)) {
+        var emptyRun = 0;
+        for (var r = beforeRow; r <= tableLast; r++) {
+          if (isKbDataRowEmpty_(sheet, r, colMap)) {
+            emptyRun++;
+          } else {
+            break;
+          }
+        }
+        if (emptyRun >= count) {
+          return beforeRow;
+        }
+        var needInsert = count - emptyRun;
+        if (needInsert > 0) {
+          sheet.insertRowsBefore(beforeRow + emptyRun, needInsert);
+        }
+        return beforeRow;
+      }
+    } catch (eCol) {
+      // fallback — вставка как ниже
+    }
+  }
+
   // Одна вставка: цикл insertRowsBefore(…,1) в таблице давал лишние пустые строки.
   try {
     sheet.insertRowsBefore(beforeRow, count);

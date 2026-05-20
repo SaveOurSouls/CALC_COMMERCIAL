@@ -172,6 +172,7 @@ function apiQueueDialogBootstrap() {
   var index = getDbOpsSidebarIndex_();
   resp.sketches = index.sketches;
   resp.opsBySketch = index.opsBySketch;
+  resp.presets = getSemifinishedPresetsIndex_();
   return resp;
 }
 
