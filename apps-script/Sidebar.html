@@ -152,7 +152,16 @@
               op: opText
             });
           }
-          saveQueue();
+          google.script.run
+            .withSuccessHandler(function (res) {
+              document.getElementById('queueBadge').textContent = 'В очереди: ' + res.count;
+              setStatus('Добавлено. В очереди: ' + res.count);
+            })
+            .apiSaveQueue({
+              queue: state.queue,
+              nextId: state.nextId,
+              sheetName: document.getElementById('sheet').value
+            });
         })
         .apiGetQueueState();
     }

@@ -8,7 +8,6 @@
     body { font: 13px/1.4 Arial, sans-serif; margin: 0; padding: 12px 14px; color: #202124; }
     h2 { font-size: 16px; margin: 0 0 4px; }
     .top { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
-    .top label { font-weight: 600; margin-right: 4px; }
     .top select { min-width: 140px; padding: 6px 8px; }
     .badge { background: #e8f0fe; color: #1967d2; padding: 4px 10px; border-radius: 12px; font-weight: 600; }
     .hint { color: #5f6368; font-size: 12px; margin: 0 0 10px; }
@@ -17,14 +16,10 @@
     button.primary { background: #1a73e8; color: #fff; border: none; font-weight: 600; }
     button.secondary { background: #f1f3f4; border: 1px solid #dadce0; }
     button.danger { background: #fff; border: 1px solid #dadce0; color: #c5221f; }
+    button:disabled { opacity: .55; cursor: default; }
     .table-wrap {
-      height: calc(100vh - 200px);
-      min-height: 360px;
-      max-height: 560px;
-      overflow: auto;
-      border: 1px solid #dadce0;
-      border-radius: 6px;
-      background: #fff;
+      height: calc(100vh - 200px); min-height: 360px; max-height: 560px;
+      overflow: auto; border: 1px solid #dadce0; border-radius: 6px; background: #fff;
     }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
     th {
@@ -43,58 +38,74 @@
     .empty { padding: 40px; text-align: center; color: #5f6368; }
     #status { margin-top: 10px; font-size: 12px; color: #137333; min-height: 18px; }
     .err { color: #c5221f; }
+    .saving { color: #5f6368; font-style: italic; }
+    #loadingOverlay {
+      position: fixed; inset: 0; background: rgba(255,255,255,.85);
+      display: flex; align-items: center; justify-content: center; font-size: 14px; z-index: 9;
+    }
   </style>
 </head>
 <body>
+  <div id="loadingOverlay">Загрузка очереди…</div>
+
   <h2>Очередь операций</h2>
-  <p class="hint">Окно можно перемещать. Выделите строку в таблице КБ на листе, затем нажмите «Вставить всё». Порядок строк = порядок в техкарте.</p>
+  <p class="hint">Перемещение и правка N/L — сразу на экране. Сохранение на сервер — с задержкой. Выделите строку в КБ → «Вставить всё».</p>
 
   <div class="top">
     <span>Вставить в лист:</span>
     <select id="sheet"></select>
     <span class="badge" id="queueCount">0 поз.</span>
-    <button type="button" class="secondary" id="btnRefresh">↻ Обновить</button>
+    <button type="button" class="secondary" id="btnRefresh">↻ С сервера</button>
   </div>
 
   <div class="toolbar">
     <button type="button" class="primary" id="btnInsertAll">Вставить всё в лист</button>
-    <button type="button" class="secondary" id="btnClear">Очистить очередь</button>
+    <button type="button" class="danger" id="btnClear">Очистить очередь</button>
   </div>
 
   <div class="table-wrap">
     <table id="queueTable">
       <thead>
         <tr>
-          <th></th>
-          <th>#</th>
-          <th>Эскиз</th>
-          <th>Номер / операция</th>
-          <th>N</th>
-          <th>L</th>
-          <th>OP</th>
-          <th></th>
+          <th></th><th>#</th><th>Эскиз</th><th>Номер</th><th>N</th><th>L</th><th>OP</th><th></th>
         </tr>
       </thead>
       <tbody id="queueBody"></tbody>
     </table>
-    <div class="empty" id="queueEmpty" style="display:none">Очередь пуста. Добавляйте операции из боковой панели «Справочник».</div>
+    <div class="empty" id="queueEmpty" style="display:none">Очередь пуста. Добавьте операции из боковой панели «Справочник».</div>
   </div>
 
   <div id="status"></div>
 
   <script>
-    var state = { queue: [], nextId: 1, sheetName: '', dragId: null };
+    var state = { queue: [], nextId: 1, dragId: null, dirty: false };
+    var saveTimer = null;
+    var pingTimer = null;
 
-    function setStatus(msg, isErr) {
+    function setStatus(msg, isErr, isSaving) {
       var el = document.getElementById('status');
       el.textContent = msg || '';
-      el.className = isErr ? 'err' : '';
+      el.className = isErr ? 'err' : (isSaving ? 'saving' : '');
     }
 
-    function persistQueue(cb) {
+    function updateCount_() {
+      document.getElementById('queueCount').textContent = state.queue.length + ' поз.';
+    }
+
+    function scheduleSave_() {
+      state.dirty = true;
+      setStatus('Сохранение…', false, true);
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(flushSave_, 600);
+    }
+
+    function flushSave_(cb) {
+      if (!state.dirty && !cb) return;
       google.script.run
         .withSuccessHandler(function (res) {
-          document.getElementById('queueCount').textContent = res.count + ' поз.';
+          state.dirty = false;
+          updateCount_();
+          setStatus('');
           if (cb) cb();
         })
         .withFailureHandler(function (e) { setStatus(e.message, true); })
@@ -103,21 +114,6 @@
           nextId: state.nextId,
           sheetName: document.getElementById('sheet').value
         });
-    }
-
-    function loadFromServer(cb) {
-      google.script.run
-        .withSuccessHandler(function (data) {
-          state.queue = data.queue || [];
-          state.nextId = data.nextId || 1;
-          state.sheetName = data.sheetName || '';
-          fillSheetSelect(data.sheets, data.sheetName);
-          renderTable();
-          document.getElementById('queueCount').textContent = state.queue.length + ' поз.';
-          if (cb) cb();
-        })
-        .withFailureHandler(function (e) { setStatus(e.message, true); })
-        .apiGetQueueState();
     }
 
     function fillSheetSelect(sheets, selected) {
@@ -132,6 +128,36 @@
       if (selected) sel.value = selected;
     }
 
+    function esc_(s) {
+      return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    }
+    function escAttr_(s) {
+      return String(s || '').replace(/"/g, '&quot;');
+    }
+
+    function buildRowEl_(item, index) {
+      var tr = document.createElement('tr');
+      tr.dataset.id = String(item.id);
+      tr.draggable = true;
+      tr.innerHTML =
+        '<td class="handle" title="Перетащить">☰</td>' +
+        '<td class="num">' + (index + 1) + '</td>' +
+        '<td>' + esc_(item.sketch) + '</td>' +
+        '<td><strong>' + esc_(item.number) + '</strong><br><span style="color:#5f6368;font-size:11px">' +
+          esc_(item.opType || '') + '</span></td>' +
+        '<td><input type="number" data-f="n" value="' + item.n + '" step="any"></td>' +
+        '<td><input type="number" data-f="l" value="' + item.l + '" step="any"></td>' +
+        '<td><input type="text" data-f="op" value="' + escAttr_(item.op || '') + '"></td>' +
+        '<td class="act">' +
+          '<button type="button" class="secondary" data-up>↑</button>' +
+          '<button type="button" class="secondary" data-down>↓</button>' +
+          '<button type="button" class="secondary" data-dup>⧉</button>' +
+          '<button type="button" class="danger" data-del>×</button>' +
+        '</td>';
+      bindRow_(tr, item);
+      return tr;
+    }
+
     function renderTable() {
       var tbody = document.getElementById('queueBody');
       var empty = document.getElementById('queueEmpty');
@@ -141,42 +167,40 @@
       if (!state.queue.length) {
         empty.style.display = 'block';
         table.style.display = 'none';
+        updateCount_();
         return;
       }
       empty.style.display = 'none';
       table.style.display = 'table';
-
+      var frag = document.createDocumentFragment();
       state.queue.forEach(function (item, index) {
-        var tr = document.createElement('tr');
-        tr.dataset.id = String(item.id);
-        tr.draggable = true;
-
-        tr.innerHTML =
-          '<td class="handle" title="Перетащить">☰</td>' +
-          '<td class="num">' + (index + 1) + '</td>' +
-          '<td>' + esc_(item.sketch) + '</td>' +
-          '<td><strong>' + esc_(item.number) + '</strong><br><span style="color:#5f6368;font-size:11px">' +
-            esc_(item.opType || '') + '</span></td>' +
-          '<td><input type="number" data-f="n" value="' + item.n + '" step="any"></td>' +
-          '<td><input type="number" data-f="l" value="' + item.l + '" step="any"></td>' +
-          '<td><input type="text" data-f="op" value="' + escAttr_(item.op || '') + '"></td>' +
-          '<td class="act">' +
-            '<button type="button" class="secondary" data-up>↑</button>' +
-            '<button type="button" class="secondary" data-down>↓</button>' +
-            '<button type="button" class="secondary" data-dup>⧉</button>' +
-            '<button type="button" class="danger" data-del>×</button>' +
-          '</td>';
-
-        bindRow_(tr, item);
-        tbody.appendChild(tr);
+        frag.appendChild(buildRowEl_(item, index));
       });
+      tbody.appendChild(frag);
+      updateCount_();
     }
 
-    function esc_(s) {
-      return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    function refreshRowNumbers_() {
+      var rows = document.getElementById('queueBody').children;
+      for (var i = 0; i < rows.length; i++) {
+        rows[i].querySelector('.num').textContent = String(i + 1);
+      }
     }
-    function escAttr_(s) {
-      return String(s || '').replace(/"/g, '&quot;');
+
+    function rowIndexById_(id) {
+      return state.queue.findIndex(function (q) { return q.id === id; });
+    }
+
+    function swapDomRows_(i, j) {
+      var tbody = document.getElementById('queueBody');
+      var a = tbody.children[i];
+      var b = tbody.children[j];
+      if (!a || !b) return;
+      if (i < j) {
+        tbody.insertBefore(b, a);
+      } else {
+        tbody.insertBefore(a, b);
+      }
     }
 
     function bindRow_(tr, item) {
@@ -186,10 +210,10 @@
       tr.querySelector('[data-del]').onclick = function () { del_(item.id); };
 
       tr.querySelectorAll('input').forEach(function (inp) {
-        inp.onchange = function () {
+        inp.oninput = function () {
           var f = inp.getAttribute('data-f');
           item[f] = (f === 'n' || f === 'l') ? Number(inp.value) : inp.value;
-          persistQueue();
+          scheduleSave_();
         };
       });
 
@@ -201,9 +225,6 @@
       tr.addEventListener('dragend', function () {
         state.dragId = null;
         tr.classList.remove('dragging');
-        document.querySelectorAll('tr.drag-over').forEach(function (r) {
-          r.classList.remove('drag-over');
-        });
       });
       tr.addEventListener('dragover', function (e) {
         e.preventDefault();
@@ -218,77 +239,110 @@
     }
 
     function move_(id, dir) {
-      var i = state.queue.findIndex(function (q) { return q.id === id; });
+      var i = rowIndexById_(id);
       if (i < 0) return;
       var j = i + dir;
       if (j < 0 || j >= state.queue.length) return;
       var t = state.queue[i];
       state.queue[i] = state.queue[j];
       state.queue[j] = t;
-      persistQueue(function () { renderTable(); });
+      swapDomRows_(i, j);
+      refreshRowNumbers_();
+      scheduleSave_();
     }
 
     function dup_(id) {
-      var i = state.queue.findIndex(function (q) { return q.id === id; });
+      var i = rowIndexById_(id);
       if (i < 0) return;
       var c = JSON.parse(JSON.stringify(state.queue[i]));
       c.id = state.nextId++;
       state.queue.splice(i + 1, 0, c);
-      persistQueue(function () { renderTable(); });
+      var tbody = document.getElementById('queueBody');
+      var ref = tbody.children[i + 1] || null;
+      tbody.insertBefore(buildRowEl_(c, i + 1), ref);
+      refreshRowNumbers_();
+      scheduleSave_();
     }
 
     function del_(id) {
-      state.queue = state.queue.filter(function (q) { return q.id !== id; });
-      persistQueue(function () { renderTable(); });
+      var i = rowIndexById_(id);
+      if (i < 0) return;
+      state.queue.splice(i, 1);
+      var tbody = document.getElementById('queueBody');
+      if (tbody.children[i]) tbody.removeChild(tbody.children[i]);
+      if (!state.queue.length) {
+        document.getElementById('queueEmpty').style.display = 'block';
+        document.getElementById('queueTable').style.display = 'none';
+      }
+      refreshRowNumbers_();
+      updateCount_();
+      scheduleSave_();
     }
 
     function dropOn_(targetId) {
       if (state.dragId === null || state.dragId === targetId) return;
-      var from = state.queue.findIndex(function (q) { return q.id === state.dragId; });
-      var to = state.queue.findIndex(function (q) { return q.id === targetId; });
+      var from = rowIndexById_(state.dragId);
+      var to = rowIndexById_(targetId);
       if (from < 0 || to < 0) return;
       var m = state.queue.splice(from, 1)[0];
       state.queue.splice(to, 0, m);
-      persistQueue(function () { renderTable(); });
+      renderTable();
+      scheduleSave_();
+    }
+
+    function bootstrap() {
+      google.script.run
+        .withSuccessHandler(function (data) {
+          document.getElementById('loadingOverlay').style.display = 'none';
+          state.queue = data.queue || [];
+          state.nextId = data.nextId || 1;
+          fillSheetSelect(data.sheets, data.sheetName);
+          renderTable();
+        })
+        .withFailureHandler(function (e) {
+          document.getElementById('loadingOverlay').style.display = 'none';
+          setStatus(e.message, true);
+        })
+        .apiQueueDialogBootstrap();
+    }
+
+    function startPing_() {
+      google.script.run.apiQueueDialogPing();
+      pingTimer = setInterval(function () {
+        google.script.run.apiQueueDialogPing();
+      }, 5000);
     }
 
     function insertAll() {
-      if (!state.queue.length) {
-        setStatus('Очередь пуста', true);
-        return;
-      }
-      var sheetName = document.getElementById('sheet').value;
-      setStatus('Вставка ' + state.queue.length + ' строк…');
-      document.getElementById('btnInsertAll').disabled = true;
-
-      var rows = state.queue.map(function (item) {
-        return {
-          sketch: item.sketch,
-          number: item.number,
-          n: item.n,
-          l: item.l,
-          op: item.op || ''
-        };
+      flushSave_(function () {
+        if (!state.queue.length) {
+          setStatus('Очередь пуста', true);
+          return;
+        }
+        var sheetName = document.getElementById('sheet').value;
+        setStatus('Вставка ' + state.queue.length + ' строк…');
+        document.getElementById('btnInsertAll').disabled = true;
+        var rows = state.queue.map(function (item) {
+          return { sketch: item.sketch, number: item.number, n: item.n, l: item.l, op: item.op || '' };
+        });
+        google.script.run
+          .withSuccessHandler(function (res) {
+            document.getElementById('btnInsertAll').disabled = false;
+            setStatus(res.hint || 'Готово');
+          })
+          .withFailureHandler(function (e) {
+            document.getElementById('btnInsertAll').disabled = false;
+            setStatus(e.message, true);
+          })
+          .apiInsertQueue({ sheetName: sheetName, rows: rows });
       });
-
-      google.script.run
-        .withSuccessHandler(function (res) {
-          document.getElementById('btnInsertAll').disabled = false;
-          setStatus(res.hint || 'Готово');
-        })
-        .withFailureHandler(function (e) {
-          document.getElementById('btnInsertAll').disabled = false;
-          setStatus(e.message, true);
-        })
-        .apiInsertQueue({ sheetName: sheetName, rows: rows });
     }
 
-    document.getElementById('sheet').onchange = function () {
-      persistQueue();
-    };
+    document.getElementById('sheet').onchange = scheduleSave_;
     document.getElementById('btnInsertAll').onclick = insertAll;
     document.getElementById('btnRefresh').onclick = function () {
-      loadFromServer(function () { setStatus('Обновлено'); });
+      document.getElementById('loadingOverlay').style.display = 'flex';
+      bootstrap();
     };
     document.getElementById('btnClear').onclick = function () {
       if (state.queue.length && !confirm('Очистить всю очередь?')) return;
@@ -296,15 +350,20 @@
         .withSuccessHandler(function () {
           state.queue = [];
           state.nextId = 1;
+          state.dirty = false;
           renderTable();
-          document.getElementById('queueCount').textContent = '0 поз.';
           setStatus('');
         })
         .apiClearQueue();
     };
 
-    loadFromServer();
-    setInterval(function () { loadFromServer(); }, 8000);
+    window.addEventListener('beforeunload', function () {
+      if (state.dirty) flushSave_();
+      google.script.run.apiQueueDialogClose();
+    });
+
+    startPing_();
+    bootstrap();
   </script>
 </body>
 </html>

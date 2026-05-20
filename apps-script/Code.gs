@@ -44,10 +44,15 @@ function showKbSidebar() {
  * Плавающее окно очереди (не блокирует работу с листом).
  */
 function showKbQueueDialog() {
+  if (isQueueDialogOpen_()) {
+    return { alreadyOpen: true };
+  }
+  markQueueDialogPing_();
   var html = HtmlService.createHtmlOutputFromFile('QueueDialog')
     .setWidth(920)
     .setHeight(680);
   SpreadsheetApp.getUi().showModelessDialog(html, 'Очередь операций');
+  return { alreadyOpen: false };
 }
 
 function showFormulaHelp() {
